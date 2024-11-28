@@ -53,8 +53,7 @@ export async function POST(
     );
   }
 
-  const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] =
-    [];
+  const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
   try {
     for (const [index, pv] of productVariants.entries()) {
