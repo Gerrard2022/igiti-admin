@@ -19,7 +19,7 @@ const nextConfig = {
           {
             key: "Access-Control-Allow-Origin",
             value:
-              "https://ecommerce-project-store-phi.vercel.app",
+              "https://igiti-store.vercel.app",
           },
           {
             key: "Access-Control-Allow-Methods",
