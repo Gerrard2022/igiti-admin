@@ -47,18 +47,6 @@ export function MainNav({
       icon: <Copy size={16} />,
     },
     {
-      href: `/${params.storeId}/sizes`,
-      label: "Sizes",
-      active: pathname === `/${params.storeId}/sizes`,
-      icon: <Ruler size={16} />,
-    },
-    {
-      href: `/${params.storeId}/colors`,
-      label: "Colors",
-      active: pathname === `/${params.storeId}/colors`,
-      icon: <Palette size={16} />,
-    },
-    {
       href: `/${params.storeId}/products`,
       label: "Products",
       active: pathname === `/${params.storeId}/products`,

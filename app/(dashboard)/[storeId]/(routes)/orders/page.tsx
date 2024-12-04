@@ -19,7 +19,6 @@ const OrdersPage = async ({
       orderItems: {
         include: {
           product: true,
-          variant: true,
         },
       },
     },
@@ -36,12 +35,6 @@ const OrdersPage = async ({
       products: JSON.stringify(
         item.orderItems.map(
           (orderItem) => orderItem.product.name
-        )
-      ),
-      variants: JSON.stringify(
-        item.orderItems.map(
-          (orderItem) =>
-            `${orderItem.variant?.color} - ${orderItem.variant?.size}`
         )
       ),
       quantity: JSON.stringify(

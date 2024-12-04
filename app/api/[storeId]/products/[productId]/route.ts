@@ -21,7 +21,6 @@ export async function GET(
       include: {
         images: true,
         category: true,
-        variants: true,
       },
     });
 
@@ -51,11 +50,7 @@ export async function PATCH(
       isFeatured: boolean;
       isArchived: boolean;
       description: string;
-      variants: {
-        inStock: number;
-        size: string;
-        color: string;
-      }[];
+      inStock: number;  // Added inStock
     };
 
     const {
@@ -66,7 +61,7 @@ export async function PATCH(
       isFeatured,
       isArchived,
       description,
-      variants,
+      inStock,  // Destructuring inStock
     } = body;
 
     if (!userId) {
@@ -111,13 +106,6 @@ export async function PATCH(
       });
     }
 
-    if (!variants) {
-      return new NextResponse(
-        "Need at least 1 variant of a product",
-        { status: 400 }
-      );
-    }
-
     const storeByUserId = await prismadb.store.findFirst({
       where: {
         id: params.storeId,
@@ -140,14 +128,12 @@ export async function PATCH(
         price,
         categoryId,
         description,
-        variants: {
-          deleteMany: {},
-        },
         images: {
           deleteMany: {},
         },
         isFeatured,
         isArchived,
+        inStock,  // Ensure inStock can be updated
       },
     });
 
@@ -156,19 +142,6 @@ export async function PATCH(
         id: params.productId,
       },
       data: {
-        variants: {
-          createMany: {
-            data: [
-              ...variants.map(
-                (variant: {
-                  inStock: number;
-                  size: string;
-                  color: string;
-                }) => variant
-              ),
-            ],
-          },
-        },
         images: {
           createMany: {
             data: [

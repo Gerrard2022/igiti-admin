@@ -12,33 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { AlertModal } from "@/components/modals/alert-modal";
 import { OrderColumn } from "../../components/columns";
 
-type Products = {
-  variants: string[];
-  quantity: string[];
-};
-
 export const OrderForm: React.FC<{
-  initialData: OrderColumn;
+  initialData: OrderColumn & {
+    products: { product: { name: string }; quantity: number }[];
+  };
 }> = ({ initialData }) => {
   const params = useParams();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const variants = JSON.parse(
-    initialData.variants
-  ) as string[];
-  const quantity = JSON.parse(
-    initialData.quantity
-  ) as string[];
-
-  const products: Products[] = [
-    {
-      variants,
-      quantity,
-    },
-  ];
 
   const onDelete = async () => {
     try {
@@ -63,21 +46,18 @@ export const OrderForm: React.FC<{
         setLoading(true);
         await axios.patch(
           `/api/${params.storeId}/orders/${initialData.id}`,
-          {
-            ...initialData,
-            isSent: true,
-          }
+          { isSent: true }
         );
         router.refresh();
-        toast.success("Order is sent");
+        toast.success("Order is sent.");
       } catch (error) {
-        console.log(error);
-        toast.error("Something went wrong");
+        console.error(error);
+        toast.error("Something went wrong.");
       } finally {
         setLoading(false);
       }
     } else {
-      toast.error("Order is already sent");
+      toast.error("Order is already sent.");
     }
   };
 
@@ -92,20 +72,16 @@ export const OrderForm: React.FC<{
       <div className="flex items-center justify-between">
         <Heading
           title="Order details"
-          description={
-            "More information about specific order"
-          }
+          description="More information about specific order"
         />
-        {initialData && (
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={() => setOpen(true)}
-            disabled={loading}
-          >
-            <Trash className="w-4 h-4" />
-          </Button>
-        )}
+        <Button
+          variant="destructive"
+          size="icon"
+          onClick={() => setOpen(true)}
+          disabled={loading}
+        >
+          <Trash className="w-4 h-4" />
+        </Button>
       </div>
       <Separator />
       <h3 className="pt-4 text-xl font-bold">
@@ -117,34 +93,26 @@ export const OrderForm: React.FC<{
           {initialData.phone}
         </div>
         <div className="mb-2">
-          <strong className="text-gray-700">
-            Address:
-          </strong>{" "}
+          <strong className="text-gray-700">Address:</strong>{" "}
           {initialData.address}
         </div>
         <div className="mb-2">
-          <strong className="text-gray-700">
-            Is Paid:
-          </strong>{" "}
+          <strong className="text-gray-700">Is Paid:</strong>{" "}
           {initialData.isPaid ? "Yes" : "No"}
         </div>
         <div>
-          <strong className="text-gray-700">
-            Variants:
-          </strong>
+          <strong className="text-gray-700">Products:</strong>
           <div className="flex flex-col justify-center">
-            {variants.map((variant, i) => (
+            {initialData.products.map((item, i) => (
               <div key={i} className="mb-1">
-                {variant} x {quantity[i]}
+                {item.product.name} x {item.quantity}
               </div>
             ))}
           </div>
         </div>
         <div className="flex justify-between mb-2">
           <div>
-            <strong className="text-gray-700">
-              Is Sent:
-            </strong>{" "}
+            <strong className="text-gray-700">Is Sent:</strong>{" "}
             {initialData.isSent ? "Yes" : "No"}
           </div>
           <Button onClick={onSent} className="py-1">

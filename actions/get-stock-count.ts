@@ -6,19 +6,11 @@ export const getStockCount = async (storeId: string) => {
       storeId,
       isArchived: false,
     },
-    include: {
-      variants: true, // Include variants to access their `inStock` values
-    },
   });
 
   const totalStockCount = products.reduce((total, product) => {
-    const productStock = product.variants.reduce((variantSum, variant) => {
-      return variantSum + variant.inStock;
-    }, 0);
-
-    return total + productStock;
+    return total + (product.inStock || 0);
   }, 0);
 
   return totalStockCount;
 };
-

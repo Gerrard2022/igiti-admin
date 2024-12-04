@@ -1,7 +1,6 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-
 import { CellAction } from "./cell-action";
 import Link from "next/link";
 
@@ -10,7 +9,6 @@ export type ProductColumn = {
   name: string;
   price: string;
   category: string;
-  variants: number;
   inStock: number;
   isFeatured: boolean;
   isArchived: boolean;
@@ -37,11 +35,6 @@ export const columns: ColumnDef<ProductColumn>[] = [
   {
     accessorKey: "category",
     header: "Category",
-  },
-
-  {
-    accessorKey: "variants",
-    header: "Variants",
   },
   {
     accessorKey: "inStock",

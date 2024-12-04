@@ -16,8 +16,6 @@ model Store {
   updatedAt  DateTime    @updatedAt
   billboards Billboard[] @relation("StoreToBillboard")
   categories Category[]  @relation("StoreToCategory")
-  sizes      Size[]      @relation("StoreToSize")
-  colors     Color[]     @relation("StoreToColor")
   orders     Order[]     @relation("StoreToOrder")
 }
 
@@ -34,34 +32,11 @@ model Billboard {
   @@index([storeId])
 }
 
-model Size {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  store     Store    @relation("StoreToSize", fields: [storeId], references: [id])
-
-  @@index([storeId])
-}
-
-model Color {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  store     Store    @relation("StoreToColor", fields: [storeId], references: [id])
-
-  @@index([storeId])
-}
-
 model Product {
   id          String      @id @default(uuid())
   name        String
   price       Decimal
+  inStock     Int
   categoryId  String
   createdAt   DateTime    @default(now())
   isArchived  Boolean     @default(false)
@@ -72,7 +47,6 @@ model Product {
   category    Category    @relation(fields: [categoryId], references: [id])
   images      Image[]
   orderItems  OrderItem[]
-  variants    Variant[]
 
   @@index([categoryId])
 }
@@ -90,20 +64,6 @@ model Category {
 
   @@index([storeId])
   @@index([billboardId])
-}
-
-model Variant {
-  id         String      @id @default(uuid())
-  productId  String
-  inStock    Int
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  size       String
-  color      String
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
-
-  @@index([productId])
 }
 
 model Image {
@@ -139,12 +99,9 @@ model OrderItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   quantity  Int      @default(1)
-  variantId String
   order     Order    @relation(fields: [orderId], references: [id])
   product   Product  @relation(fields: [productId], references: [id])
-  variant   Variant  @relation(fields: [variantId], references: [id])
 
   @@index([orderId])
   @@index([productId])
-  @@index([variantId])
 }

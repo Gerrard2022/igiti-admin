@@ -18,11 +18,7 @@ export async function POST(
       isFeatured: boolean;
       isArchived: boolean;
       description: string;
-      variants: {
-        inStock: number;
-        sizeId: string;
-        colorId: string;
-      }[];
+      inStock: number;
     };
 
     const {
@@ -30,10 +26,10 @@ export async function POST(
       price,
       categoryId,
       images,
-      variants,
       isFeatured,
       isArchived,
       description,
+      inStock,
     } = body;
 
     if (!userId) {
@@ -72,13 +68,6 @@ export async function POST(
       });
     }
 
-    if (!variants) {
-      return new NextResponse(
-        "Need at least 1 variant of a product",
-        { status: 400 }
-      );
-    }
-
     if (!params.storeId) {
       return new NextResponse("Store id is required", {
         status: 400,
@@ -107,23 +96,11 @@ export async function POST(
         categoryId,
         storeId: params.storeId,
         description,
-        variants: {
-          createMany: {
-            data: [
-              ...variants.map((variant: { inStock: number; size: string; color: string }) => ({
-                inStock: variant.inStock,
-                size: variant.size,
-                color: variant.color,
-              })),
-            ],
-          },
-        },
+        inStock,
         images: {
           createMany: {
             data: [
-              ...images.map(
-                (image: { url: string }) => image
-              ),
+              ...images.map((image: { url: string }) => image),
             ],
           },
         },
@@ -145,13 +122,9 @@ export async function GET(
 ) {
   try {
     const { searchParams } = new URL(req.url);
-    const categoryId =
-      searchParams.get("categoryId") || undefined;
+    const categoryId = searchParams.get("categoryId") || undefined;
     const name = searchParams.get("name") || undefined;
     const isFeatured = searchParams.get("isFeatured");
-    const colorId =
-      searchParams.get("color") || undefined;
-    const sizeId = searchParams.get("sizeId") || undefined;
 
     if (!params.storeId) {
       return new NextResponse("Store id is required", {
@@ -166,16 +139,9 @@ export async function GET(
         categoryId,
         isFeatured: isFeatured ? true : undefined,
         isArchived: false,
-        variants: {
-          some: {
-            color: colorId,
-            size: sizeId,
-          },
-        },
       },
       include: {
         images: true,
-        variants: true,
       },
       orderBy: {
         createdAt: "desc",

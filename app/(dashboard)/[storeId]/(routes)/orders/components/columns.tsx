@@ -13,10 +13,8 @@ export type OrderColumn = {
   isPaid: boolean;
   isSent: boolean;
   totalPrice: string;
-  products: string;
+  products: { name: string; quantity: number }[]; // Simplified structure
   createdAt: string;
-  variants: string;
-  quantity: string;
 };
 
 export const columns: ColumnDef<OrderColumn>[] = [
@@ -24,41 +22,13 @@ export const columns: ColumnDef<OrderColumn>[] = [
     accessorKey: "products",
     header: "Products",
     cell: ({ row }) => {
-      const cellValue = JSON.parse(row.getValue("products")) as string[];
+      const products = row.getValue("products") as { name: string; quantity: number }[];
       return (
         <>
-          {cellValue.map((product, index) => (
+          {products.map((product, index) => (
             <div key={index}>
-              {index + 1}. {product}
+              {index + 1}. {product.name} x {product.quantity}
             </div>
-          ))}
-        </>
-      );
-    },
-  },
-  {
-    accessorKey: "variants",
-    header: "Variants",
-    cell: ({ row }) => {
-      const cellValue = JSON.parse(row.getValue("variants")) as string[];
-      return (
-        <>
-          {cellValue.map((variant, index) => (
-            <div key={index}>{variant}</div>
-          ))}
-        </>
-      );
-    },
-  },
-  {
-    accessorKey: "quantity",
-    header: "Quantity",
-    cell: ({ row }) => {
-      const cellValue = JSON.parse(row.getValue("quantity")) as string[];
-      return (
-        <>
-          {cellValue.map((quantity, index) => (
-            <div key={index}>{quantity}</div>
           ))}
         </>
       );
@@ -74,7 +44,7 @@ export const columns: ColumnDef<OrderColumn>[] = [
   },
   {
     accessorKey: "totalPrice",
-    header: "Total price",
+    header: "Total Price",
   },
   {
     accessorKey: "isPaid",
@@ -96,16 +66,14 @@ export const columns: ColumnDef<OrderColumn>[] = [
         </Button>
       );
     },
-
     cell: ({ row }) => {
-      return row.getValue("isPaid") ? (
-        row.getValue("isSent") ? (
-          <Badge variant="success">Sent</Badge>
-        ) : (
-          <Badge variant="warning">Pending</Badge>
-        )
+      const isPaid = row.getValue("isPaid");
+      const isSent = row.getValue("isSent");
+      if (!isPaid) return <Badge variant="destructive">Processing</Badge>;
+      return isSent ? (
+        <Badge variant="success">Sent</Badge>
       ) : (
-        <Badge variant="destructive">Processing</Badge>
+        <Badge variant="warning">Pending</Badge>
       );
     },
   },

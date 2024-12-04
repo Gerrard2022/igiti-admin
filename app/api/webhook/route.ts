@@ -59,40 +59,36 @@ export async function POST(req: Request) {
         },
       });
 
-      const variantUpdates = order.orderItems.map(
+      const productUpdates = order.orderItems.map(
         async (orderItem) => {
-          const variant = await prismadb.variant.findUnique(
-            {
-              where: { id: orderItem.variantId },
-            }
-          );
+          const product = await prismadb.product.findUnique({
+            where: { id: orderItem.productId },
+          });
 
-          if (!variant) {
+          if (!product) {
             throw new Error(
-              `Variant with id ${orderItem.variantId} not found.`
+              `Product with id ${orderItem.productId} not found.`
             );
           }
 
-          if (variant.inStock < orderItem.quantity) {
+          if (product.inStock < orderItem.quantity) {
             throw new Error(
-              `Not enough items in stock for variant id ${orderItem.variantId}.`
+              `Not enough items in stock for product id ${orderItem.productId}.`
             );
           }
 
-          const updatedVariant =
-            await prismadb.variant.update({
-              where: { id: variant.id },
-              data: {
-                inStock:
-                  variant.inStock - orderItem.quantity,
-              },
-            });
+          const updatedProduct = await prismadb.product.update({
+            where: { id: product.id },
+            data: {
+              inStock: product.inStock - orderItem.quantity,
+            },
+          });
 
-          return updatedVariant;
+          return updatedProduct;
         }
       );
 
-      await Promise.all(variantUpdates);
+      await Promise.all(productUpdates);
     } catch (error: any) {
       console.error("Error in checkout session:", error);
     }
