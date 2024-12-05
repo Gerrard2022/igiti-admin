@@ -1,26 +1,15 @@
-/** @type {import('next').NextConfig} */
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "*"; // Default to all origins
+
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  images: {
-    domains: ["res.cloudinary.com"],
-  },
+  // other configurations...
 
   async headers() {
     return [
       {
         source: "/:path*",
         headers: [
-          {
-            key: "Access-Control-Allow-Credentials",
-            value: "true",
-          },
-          {
-            key: "Access-Control-Allow-Origin",
-            value:
-              "http://localhost:3001",
-          },
+          { key: "Access-Control-Allow-Credentials", value: "true" },
+          { key: "Access-Control-Allow-Origin", value: allowedOrigin },
           {
             key: "Access-Control-Allow-Methods",
             value: "GET,OPTIONS,PATCH,DELETE,POST,PUT",
