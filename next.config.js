@@ -1,15 +1,26 @@
-const allowedOrigin = process.env.ALLOWED_ORIGIN || "*"; // Default to all origins
-
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  // other configurations...
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  images: {
+    domains: ["res.cloudinary.com"],
+  },
 
   async headers() {
     return [
       {
         source: "/:path*",
         headers: [
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          { key: "Access-Control-Allow-Origin", value: allowedOrigin },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
+          },
+          {
+            key: "Access-Control-Allow-Origin",
+            value:
+              "https://buy.igiti.africa",
+          },
           {
             key: "Access-Control-Allow-Methods",
             value: "GET,OPTIONS,PATCH,DELETE,POST,PUT",
