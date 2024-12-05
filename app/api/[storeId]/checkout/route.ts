@@ -8,13 +8,13 @@ interface RequestBody {
   products: {
     productId: string;
     quantity: number;
-  }[];
+  }[]; 
 }
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Origin",
   proxy: "baseUrlForTheAPI",
 };
 
@@ -95,10 +95,13 @@ export async function POST(
       line_items,
       mode: "payment",
       billing_address_collection: "required",
+      shipping_address_collection: {
+        allowed_countries: ["US", "CA", "RW"], // List of countries for shipping (modify as needed)
+      },
       phone_number_collection: {
         enabled: true,
       },
-      success_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
+      success_url: `${process.env.FRONTEND_STORE_URL}/success`,
       cancel_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       metadata: {
         orderId: order.id,

@@ -7,9 +7,7 @@ import prismadb from "@/lib/prismadb";
 
 export async function POST(req: Request) {
   const body = await req.text();
-  const signature = headers().get(
-    "Stripe-Signature"
-  ) as string;
+  const signature = headers().get("Stripe-Signature") as string;
 
   let event: Stripe.Event;
 
@@ -20,28 +18,28 @@ export async function POST(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (error: any) {
-    return new NextResponse(
-      `Webhook Error: ${error.message}`,
-      { status: 400 }
-    );
+    return new NextResponse(`Webhook Error: ${error.message}`, {
+      status: 400,
+    });
   }
 
-  const session = event.data
-    .object as Stripe.Checkout.Session;
-  const address = session?.customer_details?.address;
+  const session = event.data.object as Stripe.Checkout.Session;
+  const shippingDetails = session?.shipping_details;
+
+  console.log("Stripe Event Data:", JSON.stringify(event, null, 2));
+  console.log("Shipping Details:", session?.shipping_details);
+  
 
   const addressComponents = [
-    address?.line1,
-    address?.line2,
-    address?.city,
-    address?.state,
-    address?.postal_code,
-    address?.country,
+    shippingDetails?.address?.line1,
+    shippingDetails?.address?.line2,
+    shippingDetails?.address?.city,
+    shippingDetails?.address?.state,
+    shippingDetails?.address?.postal_code,
+    shippingDetails?.address?.country,
   ];
 
-  const addressString = addressComponents
-    .filter((c) => c !== null)
-    .join(", ");
+  const addressString = addressComponents.filter((c) => c !== null).join(", ");
 
   if (event.type === "checkout.session.completed") {
     try {
@@ -51,42 +49,40 @@ export async function POST(req: Request) {
         },
         data: {
           isPaid: true,
-          address: addressString,
-          phone: session?.customer_details?.phone || "",
+          address: addressString, // Use the shipping address
+          phone: shippingDetails?.name || "", // Use the shipping name as phone fallback
         },
         include: {
           orderItems: true,
         },
       });
 
-      const productUpdates = order.orderItems.map(
-        async (orderItem) => {
-          const product = await prismadb.product.findUnique({
-            where: { id: orderItem.productId },
-          });
+      const productUpdates = order.orderItems.map(async (orderItem) => {
+        const product = await prismadb.product.findUnique({
+          where: { id: orderItem.productId },
+        });
 
-          if (!product) {
-            throw new Error(
-              `Product with id ${orderItem.productId} not found.`
-            );
-          }
-
-          if (product.inStock < orderItem.quantity) {
-            throw new Error(
-              `Not enough items in stock for product id ${orderItem.productId}.`
-            );
-          }
-
-          const updatedProduct = await prismadb.product.update({
-            where: { id: product.id },
-            data: {
-              inStock: product.inStock - orderItem.quantity,
-            },
-          });
-
-          return updatedProduct;
+        if (!product) {
+          throw new Error(
+            `Product with id ${orderItem.productId} not found.`
+          );
         }
-      );
+
+        if (product.inStock < orderItem.quantity) {
+          throw new Error(
+            `Not enough items in stock for product id ${orderItem.productId}.`
+          );
+        }
+
+        const updatedProduct = await prismadb.product.update({
+          where: { id: product.id },
+          data: {
+            inStock: product.inStock - orderItem.quantity,
+          },
+        });
+
+        return updatedProduct;
+      });
 
       await Promise.all(productUpdates);
     } catch (error: any) {

@@ -19,7 +19,7 @@ const nextConfig = {
           {
             key: "Access-Control-Allow-Origin",
             value:
-              "https://igiti-store.vercel.app",
+              "http://localhost:3001",
           },
           {
             key: "Access-Control-Allow-Methods",
