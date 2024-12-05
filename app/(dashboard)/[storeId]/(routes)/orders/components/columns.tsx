@@ -13,7 +13,7 @@ export type OrderColumn = {
   isPaid: boolean;
   isSent: boolean;
   totalPrice: string;
-  products: { name: string; quantity: number }[]; // Simplified structure
+  products: { name: string; quantity: number }[] | string; // Supports both parsed and string formats
   createdAt: string;
 };
 
@@ -22,12 +22,25 @@ export const columns: ColumnDef<OrderColumn>[] = [
     accessorKey: "products",
     header: "Products",
     cell: ({ row }) => {
-      const products = row.getValue("products") as { name: string; quantity: number }[];
+      // Handle parsed or string data
+      let products: { name: string; quantity: number }[] = [];
+      try {
+        const rawProducts = row.getValue("products");
+        products =
+          typeof rawProducts === "string" ? JSON.parse(rawProducts) : rawProducts;
+      } catch (error) {
+        console.error("Error parsing products:", error);
+      }
+
+      if (!Array.isArray(products)) {
+        return <div>No products available</div>;
+      }
+
       return (
         <>
           {products.map((product, index) => (
             <div key={index}>
-              {index + 1}. {product.name} x {product.quantity}
+              {product.name} x {product.quantity}
             </div>
           ))}
         </>
