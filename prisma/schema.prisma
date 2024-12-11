@@ -78,16 +78,16 @@ model Image {
 }
 
 model Order {
-  id         String      @id @default(uuid())
-  storeId    String
-  isPaid     Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  address    String      @default("")
-  phone      String      @default("")
-  updatedAt  DateTime    @updatedAt
-  isSent     Boolean     @default(false)
-  store      Store       @relation("StoreToOrder", fields: [storeId], references: [id])
-  orderItems OrderItem[]
+  id                String           @id @default(uuid())
+  storeId           String
+  isPaid            Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  isSent            Boolean          @default(false)
+  store             Store            @relation("StoreToOrder", fields: [storeId], references: [id])
+  orderItems        OrderItem[]
+  shippingDetails   ShippingDetails? @relation("OrderToShippingDetails", fields: [shippingDetailsId], references: [id])
+  shippingDetailsId String?          @unique
 
   @@index([storeId])
 }
@@ -104,4 +104,18 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
+}
+
+model ShippingDetails {
+  id           String   @id @default(uuid())
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  zipCode      String
+  country      String
+  phoneNumber  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  order        Order?   @relation("OrderToShippingDetails")
 }
