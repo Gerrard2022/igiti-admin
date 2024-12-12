@@ -9,42 +9,28 @@ import { Badge } from "@/components/ui/badge";
 export type OrderColumn = {
   id: string;
   phone: string;
-  address: string;
+  address: string; // This will display as "Shipping Address"
+  products: string; // Product name
+  quantity: string; // Quantity as a string from your data
+  totalPrice: string;
   isPaid: boolean;
   isSent: boolean;
-  totalPrice: string;
-  products: { name: string; quantity: number }[] | string; // Supports both parsed and string formats
   createdAt: string;
 };
 
 export const columns: ColumnDef<OrderColumn>[] = [
   {
-    accessorKey: "products",
-    header: "Products",
+    accessorKey: "products", // Access the product name
+    header: "Product Name",
     cell: ({ row }) => {
-      // Handle parsed or string data
-      let products: { name: string; quantity: number }[] = [];
-      try {
-        const rawProducts = row.getValue("products");
-        products =
-          typeof rawProducts === "string" ? JSON.parse(rawProducts) : rawProducts;
-      } catch (error) {
-        console.error("Error parsing products:", error);
-      }
-
-      if (!Array.isArray(products)) {
-        return <div>No products available</div>;
-      }
-
-      return (
-        <>
-          {products.map((product, index) => (
-            <div key={index}>
-              {product.name} x {product.quantity}
-            </div>
-          ))}
-        </>
-      );
+      return <div>{row.getValue("products")}</div>;
+    },
+  },
+  {
+    accessorKey: "quantity", // Access the quantity
+    header: "Quantity",
+    cell: ({ row }) => {
+      return <div>{row.getValue("quantity")}</div>;
     },
   },
   {
@@ -52,8 +38,8 @@ export const columns: ColumnDef<OrderColumn>[] = [
     header: "Phone",
   },
   {
-    accessorKey: "address",
-    header: "Address",
+    accessorKey: "address", // Field remains as "address"
+    header: "Shipping Address", // Display name updated
   },
   {
     accessorKey: "totalPrice",
@@ -89,6 +75,10 @@ export const columns: ColumnDef<OrderColumn>[] = [
         <Badge variant="warning">Pending</Badge>
       );
     },
+  },
+  {
+    accessorKey: "createdAt",
+    header: "Order Date",
   },
   {
     id: "actions",

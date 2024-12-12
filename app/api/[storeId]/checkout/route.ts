@@ -18,7 +18,7 @@ interface RequestBody {
 }
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://buy.igiti.africa",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, Origin",
 };
@@ -27,6 +27,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
+// Create Order and Initiate Payment
 export async function POST(
   req: Request,
   { params }: { params: { storeId: string } }
@@ -97,7 +98,13 @@ export async function POST(
         },
       });
 
-      return { order, totalAmount: line_items.reduce((total, item) => total + item.unit_amount * item.quantity, 0) / 100 };
+      return {
+        order,
+        totalAmount: line_items.reduce(
+          (total, item) => total + item.unit_amount * item.quantity,
+          0
+        ) / 100,
+      };
     });
 
     const { order, totalAmount } = result;
@@ -122,19 +129,24 @@ export async function POST(
       },
     };
 
-    const flutterwaveResponse = await fetch("https://api.flutterwave.com/v3/payments", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(paymentPayload),
-    });
+    const flutterwaveResponse = await fetch(
+      "https://api.flutterwave.com/v3/payments",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(paymentPayload),
+      }
+    );
 
     const flutterwaveData = await flutterwaveResponse.json();
 
     if (!flutterwaveData.status || flutterwaveData.status !== "success") {
-      throw new Error(flutterwaveData.message || "Payment initiation failed.");
+      throw new Error(
+        flutterwaveData.message || "Payment initiation failed."
+      );
     }
 
     return NextResponse.json(
@@ -147,5 +159,61 @@ export async function POST(
       { error: error.message },
       { status: 400 }
     );
+  }
+}
+
+// Webhook for Payment Status Update
+export async function paymentWebhook(req: Request) {
+  try {
+    const payload = await req.json();
+
+    // Verify Flutterwave event
+    if (payload.event !== "charge.completed") {
+      return new NextResponse("Invalid event type", { status: 400 });
+    }
+
+    const { tx_ref, status } = payload.data;
+
+    if (status !== "successful") {
+      return new NextResponse("Transaction not successful", { status: 400 });
+    }
+
+    // Extract the order ID from the transaction reference
+    const orderIdMatch = tx_ref.match(/order_(.+)_\d+/);
+    if (!orderIdMatch) {
+      return new NextResponse("Invalid transaction reference", { status: 400 });
+    }
+
+    const orderId = orderIdMatch[1];
+
+    // Update the order in the database
+    await prismadb.order.update({
+      where: { id: orderId },
+      data: { isPaid: true },
+    });
+
+    return NextResponse.json(
+      { message: "Order payment updated successfully" },
+      { headers: corsHeaders }
+    );
+  } catch (error: any) {
+    console.error("Webhook Error:", error.message);
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
+
+// Fallback for manual verification of payment using Flutterwave API
+async function verifyTransaction(txRef: string) {
+  const response = await fetch(`https://api.flutterwave.com/v3/transactions/${txRef}/verify`, {
+    headers: {
+      Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
+    },
+  });
+
+  const data = await response.json();
+  if (data.status === "success" && data.data.status === "successful") {
+    return data.data;
+  } else {
+    throw new Error(data.message || "Transaction verification failed.");
   }
 }

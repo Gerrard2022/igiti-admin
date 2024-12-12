@@ -11,6 +11,9 @@ interface OrderClientProps {
 }
 
 export const OrderClient: React.FC<OrderClientProps> = ({ data }) => {
+
+  console.log("DATA BFR TABLE", data);
+  
   
   return (
     <>
