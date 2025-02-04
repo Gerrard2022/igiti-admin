@@ -43,6 +43,49 @@ async function getPesapalToken(consumerKey: string, consumerSecret: string) {
   }
 }
 
+// Register IPN URL with Pesapal
+async function registerIpnUrl(token: string, storeId: string) {
+  log.info('Registering IPN URL with Pesapal');
+  
+  const ipnUrl = `${process.env.FRONTEND_STORE_URL}/api/${storeId}/pesapal-ipn`;
+  
+  try {
+    const response = await fetch('https://pay.pesapal.com/v3/api/URLSetup/RegisterIPN', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        url: ipnUrl,
+        ipn_notification_type: "GET"
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    log.info('IPN URL registered successfully');
+    
+    // Store IPN details in database
+    await prismadb.store.update({
+      where: { id: storeId },
+      data: {
+        pesapalIpnId: data.ipn_id,
+        pesapalIpnUrl: ipnUrl
+      }
+    });
+
+    return data.ipn_id;
+  } catch (error) {
+    log.error('IPN registration error', error);
+    throw new Error('Failed to register IPN URL');
+  }
+}
+
 // Submit order to Pesapal
 async function submitPesapalOrder(token: string, orderData: any) {
   log.info('Submitting order to Pesapal');
@@ -96,9 +139,25 @@ export async function POST(
 
   try {
     // Validate environment variables
-    if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET || !process.env.PESAPAL_IPN_ID) {
-      log.error('Missing Pesapal credentials or IPN ID');
+    if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET) {
+      log.error('Missing Pesapal credentials');
       return new NextResponse("Payment configuration error", { status: 500 });
+    }
+
+    const token = await getPesapalToken(
+      process.env.PESAPAL_CONSUMER_KEY, 
+      process.env.PESAPAL_CONSUMER_SECRET
+    );
+
+    // Get or create IPN ID for the store
+    const store = await prismadb.store.findUnique({
+      where: { id: params.storeId },
+      select: { pesapalIpnId: true }
+    });
+
+    let ipnId = store?.pesapalIpnId;
+    if (!ipnId) {
+      ipnId = await registerIpnUrl(token, params.storeId);
     }
 
     const body = await req.json();
@@ -137,18 +196,13 @@ export async function POST(
 
     log.info(`Total order amount: ${total}`);
 
-    const token = await getPesapalToken(
-      process.env.PESAPAL_CONSUMER_KEY, 
-      process.env.PESAPAL_CONSUMER_SECRET
-    );
-
     const pesapalOrderData = {
       id: order.id,
       currency: "KES",
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
-      notification_id: process.env.PESAPAL_IPN_ID, // Add the IPN ID here
+      notification_id: ipnId,
       cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       billing_address: {
         email_address: body.shippingDetails.email || "customer@example.com",
