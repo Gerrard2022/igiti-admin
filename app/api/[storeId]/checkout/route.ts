@@ -1,219 +1,222 @@
-import { NextResponse } from "next/server";
+// pesapalService.ts
+
+import { NextResponse } from 'next/server';
 import prismadb from "@/lib/prismadb";
 
-interface RequestBody {
-  products: {
-    productId: string;
-    quantity: number;
-  }[];
-  shippingDetails: {
-    addressLine1: string;
-    addressLine2?: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phoneNumber: string;
-  };
+interface PesapalAuthResponse {
+  token: string;
+  expiryDate: string;
+  error?: string;
+}
+
+interface PesapalIPNResponse {
+  url: string;
+  created_date: string;
+  ipn_id: string;
+  notification_type: number;
+  ipn_notification_type_description: string;
+  ipn_status: number;
+  ipn_status_description: string;
+  error: any;
+  status: string;
+}
+
+interface PesapalConfig {
+  consumer_key: string;
+  consumer_secret: string;
+  environment?: 'sandbox' | 'production';
+}
+
+export class PesapalService {
+  private token: string | null = null;
+  private tokenExpiry: Date | null = null;
+  private readonly baseUrl: string;
+
+  constructor(private readonly config: PesapalConfig) {
+    this.baseUrl = config.environment === 'production' 
+      ? 'https://pay.pesapal.com/v3/api'
+      : 'https://cybqa.pesapal.com/v3/api';
+  }
+
+  private async getAuthToken(): Promise<string> {
+    // Return existing token if still valid
+    if (this.token && this.tokenExpiry && this.tokenExpiry > new Date()) {
+      return this.token;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/Auth/RequestToken`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          consumer_key: this.config.consumer_key,
+          consumer_secret: this.config.consumer_secret
+        })
+      });
+
+      const data = await response.json() as PesapalAuthResponse;
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      this.token = data.token;
+      this.tokenExpiry = new Date(data.expiryDate);
+
+      return this.token;
+    } catch (error) {
+      console.error('Pesapal authentication error:', error);
+      throw new Error('Failed to authenticate with Pesapal');
+    }
+  }
+
+  async registerIPN(storeId: string): Promise<string> {
+    const token = await this.getAuthToken();
+    const ipnUrl = `${process.env.FRONTEND_STORE_URL}/api/${storeId}/ipn`;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/URLSetup/RegisterIPN`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          url: ipnUrl,
+          ipn_notification_type: "GET"
+        })
+      });
+
+      const data = await response.json() as PesapalIPNResponse;
+
+      if (data.error) {
+        throw new Error(JSON.stringify(data.error));
+      }
+
+      // Store the IPN ID in the database for the store
+      await prismadb.store.update({
+        where: { id: storeId },
+        data: { 
+          pesapalIpnId: data.ipn_id,
+          pesapalIpnUrl: ipnUrl
+        },
+      });
+
+      return data.ipn_id;
+    } catch (error) {
+      console.error('IPN registration error:', error);
+      throw new Error('Failed to register IPN URL');
+    }
+  }
+
+  async getOrCreateIPN(storeId: string): Promise<string> {
+    // Check if store already has an IPN ID
+    const store = await prismadb.store.findUnique({
+      where: { id: storeId },
+      select: { pesapalIpnId: true }
+    });
+
+    if (store?.pesapalIpnId) {
+      return store.pesapalIpnId;
+    }
+
+    // If no IPN ID exists, register a new one
+    return this.registerIPN(storeId);
+  }
+
+  async submitOrder(orderData: any, storeId: string): Promise<any> {
+    const token = await this.getAuthToken();
+    
+    // Ensure we have an IPN ID
+    const ipnId = await this.getOrCreateIPN(storeId);
+    
+    // Add the IPN ID to the order data
+    const orderPayloadWithIpn = {
+      ...orderData,
+      notification_id: ipnId
+    };
+
+    try {
+      const response = await fetch(`${this.baseUrl}/Transactions/SubmitOrderRequest`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(orderPayloadWithIpn)
+      });
+
+      return await response.json();
+    } catch (error) {
+      console.error('Order submission error:', error);
+      throw new Error('Failed to submit order to Pesapal');
+    }
+  }
+
+  async getTransactionStatus(orderTrackingId: string): Promise<any> {
+    const token = await this.getAuthToken();
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      return await response.json();
+    } catch (error) {
+      console.error('Transaction status check error:', error);
+      throw new Error('Failed to get transaction status');
+    }
+  }
 }
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://buy.igiti.africa",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, Origin",
+  "Access-Control-Allow-Origin": "http://localhost:3001",
+  "Access-Control-Allow-Methods": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version",
+  "Access-Control-Allow-Credentials": "true",
 };
 
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders
+  });
 }
 
-// Create Order and Initiate Payment
 export async function POST(
   req: Request,
   { params }: { params: { storeId: string } }
 ) {
-  const { products, shippingDetails } = (await req.json()) as RequestBody;
-
-  if (!products || products.length === 0) {
-    return new NextResponse("Products are required", { status: 400 });
+  if (req.method === 'OPTIONS') {
+    return new NextResponse(null, {
+      status: 200,
+      headers: corsHeaders
+    });
   }
-
-  if (!shippingDetails) {
-    return new NextResponse("Shipping details are required", { status: 400 });
-  }
-
-  const line_items: any[] = [];
 
   try {
-    const result = await prismadb.$transaction(async (tx) => {
-      for (const productData of products) {
-        const product = await tx.product.findUnique({
-          where: { id: productData.productId },
-        });
-
-        if (!product) {
-          throw new Error(`Product with ID ${productData.productId} not found.`);
-        }
-
-        if (product.inStock < productData.quantity) {
-          throw new Error(`Not enough stock for ${product.name}.`);
-        }
-
-        line_items.push({
-          name: product.name,
-          quantity: productData.quantity,
-          unit_amount: product.price.toNumber() * 100, // Convert to cents
-        });
-
-        // Update stock
-        await tx.product.update({
-          where: { id: productData.productId },
-          data: { inStock: product.inStock - productData.quantity },
-        });
-      }
-
-      if (line_items.length === 0) {
-        throw new Error("No products available.");
-      }
-
-      const createdShippingDetails = await tx.shippingDetails.create({
-        data: shippingDetails,
-      });
-
-      const order = await tx.order.create({
-        data: {
-          storeId: params.storeId,
-          isPaid: false,
-          orderItems: {
-            create: products.map((productData) => ({
-              product: {
-                connect: {
-                  id: productData.productId,
-                },
-              },
-              quantity: productData.quantity,
-            })),
-          },
-          shippingDetailsId: createdShippingDetails.id,
-        },
-      });
-
-      return {
-        order,
-        totalAmount: line_items.reduce(
-          (total, item) => total + item.unit_amount * item.quantity,
-          0
-        ) / 100,
-      };
+    // Your existing POST logic here
+    const response = { /* your response */ };
+    
+    return NextResponse.json(response, {
+      headers: corsHeaders
     });
-
-    const { order, totalAmount } = result;
-
-    // Create a payment link using Flutterwave API
-    const paymentPayload = {
-      tx_ref: `order_${order.id}_${Date.now()}`,
-      amount: totalAmount,
-      currency: "USD",
-      redirect_url: `${process.env.FRONTEND_STORE_URL}/success`,
-      customer: {
-        email: "customer@example.com", // Replace or fetch dynamically
-        phone_number: shippingDetails.phoneNumber,
-        name: `${shippingDetails.city}, ${shippingDetails.state}`,
-      },
-      meta: {
-        orderId: order.id,
-      },
-      customizations: {
-        title: "E-Commerce Store",
-        description: "Payment for your order",
-      },
-    };
-
-    const flutterwaveResponse = await fetch(
-      "https://api.flutterwave.com/v3/payments",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(paymentPayload),
-      }
-    );
-
-    const flutterwaveData = await flutterwaveResponse.json();
-
-    if (!flutterwaveData.status || flutterwaveData.status !== "success") {
-      throw new Error(
-        flutterwaveData.message || "Payment initiation failed."
-      );
-    }
-
-    return NextResponse.json(
-      { url: flutterwaveData.data.link },
-      { headers: corsHeaders }
-    );
-  } catch (error: any) {
-    console.error("Checkout Error:", error.message);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 400 }
-    );
-  }
-}
-
-// Webhook for Payment Status Update
-export async function paymentWebhook(req: Request) {
-  try {
-    const payload = await req.json();
-
-    // Verify Flutterwave event
-    if (payload.event !== "charge.completed") {
-      return new NextResponse("Invalid event type", { status: 400 });
-    }
-
-    const { tx_ref, status } = payload.data;
-
-    if (status !== "successful") {
-      return new NextResponse("Transaction not successful", { status: 400 });
-    }
-
-    // Extract the order ID from the transaction reference
-    const orderIdMatch = tx_ref.match(/order_(.+)_\d+/);
-    if (!orderIdMatch) {
-      return new NextResponse("Invalid transaction reference", { status: 400 });
-    }
-
-    const orderId = orderIdMatch[1];
-
-    // Update the order in the database
-    await prismadb.order.update({
-      where: { id: orderId },
-      data: { isPaid: true },
+  } catch (error) {
+    console.log('[CHECKOUT_POST]', error);
+    return new NextResponse("Internal error", { 
+      status: 500,
+      headers: corsHeaders 
     });
-
-    return NextResponse.json(
-      { message: "Order payment updated successfully" },
-      { headers: corsHeaders }
-    );
-  } catch (error: any) {
-    console.error("Webhook Error:", error.message);
-    return new NextResponse("Internal Server Error", { status: 500 });
-  }
-}
-
-// Fallback for manual verification of payment using Flutterwave API
-async function verifyTransaction(txRef: string) {
-  const response = await fetch(`https://api.flutterwave.com/v3/transactions/${txRef}/verify`, {
-    headers: {
-      Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
-    },
-  });
-
-  const data = await response.json();
-  if (data.status === "success" && data.data.status === "successful") {
-    return data.data;
-  } else {
-    throw new Error(data.message || "Transaction verification failed.");
   }
 }

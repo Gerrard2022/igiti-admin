@@ -10,7 +10,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        source: "/api/:path*",
         headers: [
           {
             key: "Access-Control-Allow-Credentials",
@@ -18,12 +18,11 @@ const nextConfig = {
           },
           {
             key: "Access-Control-Allow-Origin",
-            value:
-              "https://buy.igiti.africa",
+            value: "http://localhost:3001",
           },
           {
             key: "Access-Control-Allow-Methods",
-            value: "GET,OPTIONS,PATCH,DELETE,POST,PUT",
+            value: "GET,DELETE,PATCH,POST,PUT,OPTIONS",
           },
           {
             key: "Access-Control-Allow-Headers",
