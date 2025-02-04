@@ -139,7 +139,6 @@ export class PesapalService {
       ...orderData,
       notification_id: ipnId
     };
-
     try {
       const response = await fetch(`${this.baseUrl}/Transactions/SubmitOrderRequest`, {
         method: 'POST',
@@ -198,20 +197,92 @@ export async function POST(
   req: Request,
   { params }: { params: { storeId: string } }
 ) {
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, {
-      status: 200,
-      headers: corsHeaders
-    });
-  }
-
   try {
-    // Your existing POST logic here
-    const response = { /* your response */ };
-    
-    return NextResponse.json(response, {
-      headers: corsHeaders
+    const body = await req.json();
+    const { productIds, quantities } = body;
+
+    if (!productIds || productIds.length === 0) {
+      return new NextResponse("Product ids are required", { status: 400 });
+    }
+
+    // Create order in your database first
+    const order = await prismadb.order.create({
+      data: {
+        storeId: params.storeId,
+        isPaid: false,
+        orderItems: {
+          create: productIds.map((productId: string, index: number) => ({
+            product: {
+              connect: {
+                id: productId
+              }
+            },
+            quantity: quantities[index]
+          }))
+        }
+      },
+      include: {
+        orderItems: {
+          include: {
+            product: true
+          }
+        }
+      }
     });
+
+    // Calculate total amount
+    const total = order.orderItems.reduce((acc, item) => {
+      return acc + (item.product.price.toNumber() * item.quantity);
+    }, 0);
+
+    // Initialize PesaPal service
+    const pesapal = new PesapalService({
+      consumer_key: process.env.PESAPAL_CONSUMER_KEY!,
+      consumer_secret: process.env.PESAPAL_CONSUMER_SECRET!,
+      environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+    });
+
+    // Prepare order data for PesaPal
+    const pesapalOrderData = {
+      id: order.id,
+      currency: "KES",
+      amount: total,
+      description: `Order ${order.id} from store ${params.storeId}`,
+      callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
+      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
+      notification_id: "", // Will be added by submitOrder method
+      billing_address: {
+        email_address: body.email,
+        phone_number: body.phone,
+        country_code: "KE",
+        first_name: body.firstName,
+        last_name: body.lastName,
+      }
+    };
+
+    // Submit order to PesaPal
+    const pesapalResponse = await pesapal.submitOrder(pesapalOrderData, params.storeId);
+
+    if (!pesapalResponse.order_tracking_id) {
+      throw new Error("Failed to get order tracking ID from PesaPal");
+    }
+
+    // Update order with PesaPal tracking ID
+    await prismadb.order.update({
+      where: { id: order.id },
+      data: {
+        pesapalTrackingId: pesapalResponse.order_tracking_id
+      }
+    });
+
+    return NextResponse.json(
+      { 
+        orderId: order.id,
+        redirectUrl: pesapalResponse.redirect_url 
+      }, 
+      { headers: corsHeaders }
+    );
+
   } catch (error) {
     console.log('[CHECKOUT_POST]', error);
     return new NextResponse("Internal error", { 

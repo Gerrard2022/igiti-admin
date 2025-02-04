@@ -14,9 +14,11 @@ model Store {
   userId     String
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
-  billboards Billboard[] @relation("StoreToBillboard")
-  categories Category[]  @relation("StoreToCategory")
-  orders     Order[]     @relation("StoreToOrder")
+  pesapalIpnId    String?     // Add this field for PesaPal IPN
+  pesapalIpnUrl   String?     // Add this field for PesaPal IPN URL
+  billboards     Billboard[] @relation("StoreToBillboard")
+  categories     Category[]  @relation("StoreToCategory")
+  orders         Order[]     @relation("StoreToOrder")
 }
 
 model Billboard {
@@ -84,6 +86,7 @@ model Order {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   isSent            Boolean          @default(false)
+  pesapalTrackingId String?         // Add this field for PesaPal tracking
   store             Store            @relation("StoreToOrder", fields: [storeId], references: [id])
   orderItems        OrderItem[]
   shippingDetails   ShippingDetails? @relation("OrderToShippingDetails", fields: [shippingDetailsId], references: [id])
