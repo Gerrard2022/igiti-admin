@@ -1,188 +1,83 @@
-// pesapalService.ts
-
 import { NextResponse } from 'next/server';
 import prismadb from "@/lib/prismadb";
 
-interface PesapalAuthResponse {
-  token: string;
-  expiryDate: string;
-  error?: string;
-}
+// Logging utility
+const log = {
+  info: (message: string) => console.log(`[PESAPAL_CHECKOUT] ${message}`),
+  error: (message: string, error?: any) => console.error(`[PESAPAL_CHECKOUT_ERROR] ${message}`, error)
+};
 
-interface PesapalIPNResponse {
-  url: string;
-  created_date: string;
-  ipn_id: string;
-  notification_type: number;
-  ipn_notification_type_description: string;
-  ipn_status: number;
-  ipn_status_description: string;
-  error: any;
-  status: string;
-}
-
-interface PesapalConfig {
-  consumer_key: string;
-  consumer_secret: string;
-  environment?: 'sandbox' | 'production';
-}
-
-export class PesapalService {
-  private token: string | null = null;
-  private tokenExpiry: Date | null = null;
-  private readonly baseUrl: string;
-
-  constructor(private readonly config: PesapalConfig) {
-    this.baseUrl = config.environment === 'production' 
-      ? 'https://pay.pesapal.com/v3/api'
-      : 'https://cybqa.pesapal.com/v3/api';
-  }
-
-  private async getAuthToken(): Promise<string> {
-    // Return existing token if still valid
-    if (this.token && this.tokenExpiry && this.tokenExpiry > new Date()) {
-      return this.token;
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/Auth/RequestToken`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          consumer_key: this.config.consumer_key,
-          consumer_secret: this.config.consumer_secret
-        })
-      });
-
-      const data = await response.json() as PesapalAuthResponse;
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      this.token = data.token;
-      this.tokenExpiry = new Date(data.expiryDate);
-
-      return this.token;
-    } catch (error) {
-      console.error('Pesapal authentication error:', error);
-      throw new Error('Failed to authenticate with Pesapal');
-    }
-  }
-
-  async registerIPN(storeId: string): Promise<string> {
-    const token = await this.getAuthToken();
-    const ipnUrl = `${process.env.FRONTEND_STORE_URL}/api/${storeId}/ipn`;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/URLSetup/RegisterIPN`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          url: ipnUrl,
-          ipn_notification_type: "GET"
-        })
-      });
-
-      const data = await response.json() as PesapalIPNResponse;
-
-      if (data.error) {
-        throw new Error(JSON.stringify(data.error));
-      }
-
-      // Store the IPN ID in the database for the store
-      await prismadb.store.update({
-        where: { id: storeId },
-        data: { 
-          pesapalIpnId: data.ipn_id,
-          pesapalIpnUrl: ipnUrl
-        },
-      });
-
-      return data.ipn_id;
-    } catch (error) {
-      console.error('IPN registration error:', error);
-      throw new Error('Failed to register IPN URL');
-    }
-  }
-
-  async getOrCreateIPN(storeId: string): Promise<string> {
-    // Check if store already has an IPN ID
-    const store = await prismadb.store.findUnique({
-      where: { id: storeId },
-      select: { pesapalIpnId: true }
+// Authentication for Pesapal
+async function getPesapalToken(consumerKey: string, consumerSecret: string) {
+  log.info('Attempting to get Pesapal authentication token');
+  
+  try {
+    const response = await fetch('https://pay.pesapal.com/v3/api/Auth/RequestToken', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ consumer_key: consumerKey, consumer_secret: consumerSecret })
     });
 
-    if (store?.pesapalIpnId) {
-      return store.pesapalIpnId;
+    log.info(`Token request response status: ${response.status}`);
+
+    if (!response.ok) {
+      log.error(`Failed to get token. Status: ${response.status}`);
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    // If no IPN ID exists, register a new one
-    return this.registerIPN(storeId);
-  }
-
-  async submitOrder(orderData: any, storeId: string): Promise<any> {
-    const token = await this.getAuthToken();
+    const data = await response.json();
     
-    // Ensure we have an IPN ID
-    const ipnId = await this.getOrCreateIPN(storeId);
-    
-    // Add the IPN ID to the order data
-    const orderPayloadWithIpn = {
-      ...orderData,
-      notification_id: ipnId
-    };
-    try {
-      const response = await fetch(`${this.baseUrl}/Transactions/SubmitOrderRequest`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(orderPayloadWithIpn)
-      });
-
-      return await response.json();
-    } catch (error) {
-      console.error('Order submission error:', error);
-      throw new Error('Failed to submit order to Pesapal');
+    if (data.error) {
+      log.error(`Token request error: ${data.error}`);
+      throw new Error(data.error);
     }
+
+    log.info('Successfully retrieved Pesapal token');
+    return data.token;
+  } catch (error) {
+    log.error('Authentication error', error);
+    throw new Error('Failed to authenticate with Pesapal');
   }
+}
 
-  async getTransactionStatus(orderTrackingId: string): Promise<any> {
-    const token = await this.getAuthToken();
+// Submit order to Pesapal
+async function submitPesapalOrder(token: string, orderData: any) {
+  log.info('Submitting order to Pesapal');
+  
+  try {
+    const response = await fetch('https://pay.pesapal.com/v3/api/Transactions/SubmitOrderRequest', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(orderData)
+    });
 
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`,
-        {
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
+    log.info(`Order submission response status: ${response.status}`);
 
-      return await response.json();
-    } catch (error) {
-      console.error('Transaction status check error:', error);
-      throw new Error('Failed to get transaction status');
+    if (!response.ok) {
+      log.error(`Order submission HTTP error: ${response.status}`);
+      throw new Error(`HTTP error! Status: ${response.status}`);
     }
+
+    const orderResponse = await response.json();
+    log.info('Order submitted successfully');
+    return orderResponse;
+  } catch (error) {
+    log.error('Order submission error', error);
+    throw new Error('Failed to submit order to Pesapal');
   }
 }
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "http://localhost:3001",
   "Access-Control-Allow-Methods": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Allow-Credentials": "true",
 };
 
@@ -197,94 +92,117 @@ export async function POST(
   req: Request,
   { params }: { params: { storeId: string } }
 ) {
+  log.info(`Checkout process initiated for store: ${params.storeId}`);
+
   try {
+    // Validate environment variables
+    if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET || !process.env.PESAPAL_IPN_ID) {
+      log.error('Missing Pesapal credentials or IPN ID');
+      return new NextResponse("Payment configuration error", { status: 500 });
+    }
+
     const body = await req.json();
-    const { productIds, quantities } = body;
+    
+    log.info(`Received request body: ${JSON.stringify(body)}`);
+    
+    const productIds = body.products.map((product: any) => product.productId);
+    const quantities = body.products.map((product: any) => product.quantity);
+
+    log.info(`Received order with ${productIds.length} products`);
 
     if (!productIds || productIds.length === 0) {
+      log.error('No product IDs provided');
       return new NextResponse("Product ids are required", { status: 400 });
     }
 
-    // Create order in your database first
     const order = await prismadb.order.create({
       data: {
         storeId: params.storeId,
         isPaid: false,
         orderItems: {
           create: productIds.map((productId: string, index: number) => ({
-            product: {
-              connect: {
-                id: productId
-              }
-            },
+            product: { connect: { id: productId } },
             quantity: quantities[index]
           }))
         }
       },
-      include: {
-        orderItems: {
-          include: {
-            product: true
-          }
-        }
-      }
+      include: { orderItems: { include: { product: true } } }
     });
 
-    // Calculate total amount
+    log.info(`Order created in database with ID: ${order.id}`);
+
     const total = order.orderItems.reduce((acc, item) => {
       return acc + (item.product.price.toNumber() * item.quantity);
     }, 0);
 
-    // Initialize PesaPal service
-    const pesapal = new PesapalService({
-      consumer_key: process.env.PESAPAL_CONSUMER_KEY!,
-      consumer_secret: process.env.PESAPAL_CONSUMER_SECRET!,
-      environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
-    });
+    log.info(`Total order amount: ${total}`);
 
-    // Prepare order data for PesaPal
+    const token = await getPesapalToken(
+      process.env.PESAPAL_CONSUMER_KEY, 
+      process.env.PESAPAL_CONSUMER_SECRET
+    );
+
     const pesapalOrderData = {
       id: order.id,
       currency: "KES",
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
+      notification_id: process.env.PESAPAL_IPN_ID, // Add the IPN ID here
       cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
-      notification_id: "", // Will be added by submitOrder method
       billing_address: {
-        email_address: body.email,
-        phone_number: body.phone,
-        country_code: "KE",
-        first_name: body.firstName,
-        last_name: body.lastName,
+        email_address: body.shippingDetails.email || "customer@example.com",
+        phone_number: body.shippingDetails.phoneNumber || '0791055738',
+        country_code: "KE", 
+        first_name: body.shippingDetails.addressLine1 || "Customer",
+        last_name: body.shippingDetails.country || "User",
       }
     };
 
-    // Submit order to PesaPal
-    const pesapalResponse = await pesapal.submitOrder(pesapalOrderData, params.storeId);
+    console.log('Pesapal Order Data:', JSON.stringify(pesapalOrderData, null, 2));
 
-    if (!pesapalResponse.order_tracking_id) {
-      throw new Error("Failed to get order tracking ID from PesaPal");
+    const pesapalResponse = await submitPesapalOrder(token, pesapalOrderData);
+
+    console.log('Full Pesapal Response:', JSON.stringify(pesapalResponse, null, 2));
+
+    const orderTrackingId = 
+      pesapalResponse.order_tracking_id || 
+      pesapalResponse.orderTrackingId || 
+      pesapalResponse.tracking_id;
+
+    if (!orderTrackingId) {
+      log.error('Failed to extract order tracking ID from response');
+      log.error('Response details:', JSON.stringify(pesapalResponse, null, 2));
+      throw new Error("No order tracking ID found in Pesapal response");
     }
 
-    // Update order with PesaPal tracking ID
     await prismadb.order.update({
       where: { id: order.id },
-      data: {
-        pesapalTrackingId: pesapalResponse.order_tracking_id
-      }
+      data: { pesapalTrackingId: orderTrackingId }
     });
+
+    log.info(`Order submitted successfully. Tracking ID: ${orderTrackingId}`);
+
+    const redirectUrl = 
+      pesapalResponse.redirect_url || 
+      pesapalResponse.redirectUrl || 
+      pesapalResponse.paymentUrl;
+
+    if (!redirectUrl) {
+      log.error('Failed to extract redirect URL from response');
+      throw new Error("No redirect URL found in Pesapal response");
+    }
 
     return NextResponse.json(
       { 
         orderId: order.id,
-        redirectUrl: pesapalResponse.redirect_url 
+        url: redirectUrl 
       }, 
       { headers: corsHeaders }
     );
 
   } catch (error) {
-    console.log('[CHECKOUT_POST]', error);
+    log.error('Checkout process failed', error);
     return new NextResponse("Internal error", { 
       status: 500,
       headers: corsHeaders 

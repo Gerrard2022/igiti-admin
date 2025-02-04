@@ -20,11 +20,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
 
-  console.log("secret key here", process.env.CLERK_SECRET_KEY);
-  console.log("DATABASE_URL:", process.env.DATABASE_URL);
-
-
-
   return (
     <ClerkProvider>
       <html lang="en">
