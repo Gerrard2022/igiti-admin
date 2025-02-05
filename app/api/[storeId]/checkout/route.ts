@@ -141,7 +141,7 @@ export async function POST(
     // Validate environment variables
     if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET) {
       log.error('Missing Pesapal credentials');
-      return new NextResponse("Payment configuration error", { status: 500 });
+      return new NextResponse("Missing Pesapal credentials", { status: 500 });
     }
 
     const token = await getPesapalToken(
