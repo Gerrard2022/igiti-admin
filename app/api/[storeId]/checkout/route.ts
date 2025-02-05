@@ -149,7 +149,6 @@ export async function POST(
       process.env.PESAPAL_CONSUMER_SECRET
     );
 
-    // Get or create IPN ID for the store
     const store = await prismadb.store.findUnique({
       where: { id: params.storeId },
       select: { pesapalIpnId: true }
@@ -190,26 +189,28 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
+    // Multiply the price by 1000 to convert to RWF
     const total = order.orderItems.reduce((acc, item) => {
-      return acc + (item.product.price.toNumber() * item.quantity);
+      return acc + (item.product.price.toNumber() * item.quantity * 1000);
     }, 0);
 
-    log.info(`Total order amount: ${total}`);
+    log.info(`Total order amount in RWF: ${total}`);
 
     const pesapalOrderData = {
       id: order.id,
-      currency: "KES",
+      currency: "RWF",
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
       notification_id: ipnId,
       cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       billing_address: {
-        email_address: body.shippingDetails.email || "customer@example.com",
-        phone_number: body.shippingDetails.phoneNumber || '0791055738',
-        country_code: "KE", 
-        first_name: body.shippingDetails.addressLine1 || "Customer",
-        last_name: body.shippingDetails.country || "User",
+        email_address: "",  // Left empty for client to fill
+        phone_number: body.shippingDetails.phoneNumber || "",   // Left empty for client to fill
+        country_code: "RW", // Changed to Rwanda
+        first_name: "",     // Left empty for client to fill
+        last_name: "",      // Left empty for client to fill
+        line_1: body.shippingDetails.addressLine1 || "", // Keeping address line
       }
     };
 
