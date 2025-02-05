@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs";
 import prismadb from "@/lib/prismadb";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:3001",
+  "Access-Control-Allow-Origin": "https://buy.igiti.africa",
   "Access-Control-Allow-Methods":
     "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":

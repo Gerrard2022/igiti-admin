@@ -18,7 +18,7 @@ const nextConfig = {
           },
           {
             key: "Access-Control-Allow-Origin",
-            value: "http://localhost:3001",
+            value: "https://buy.igiti.africa",
           },
           {
             key: "Access-Control-Allow-Methods",
