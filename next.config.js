@@ -18,7 +18,7 @@ const nextConfig = {
           },
           {
             key: "Access-Control-Allow-Origin",
-            value: "https://buy.igiti.africa",
+            value: process.env.FRONTEND_STORE_URL,
           },
           {
             key: "Access-Control-Allow-Methods",
