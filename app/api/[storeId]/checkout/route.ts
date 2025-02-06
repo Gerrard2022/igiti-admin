@@ -189,16 +189,30 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
-    // Multiply the price by 1000 to convert to RWF
+// Define African countries (keep the existing list)
+const africanCountries = [
+  "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
+  "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
+  "Ethiopia", "Ghana", "Angola", "Mozambique"
+];
+
+// Detect if the country is in Africa by checking the shipping country
+const shippingCountry = body.shippingDetails?.country || "unknown";
+const isAfrica = africanCountries.some(africanCountry => 
+  shippingCountry.toLowerCase().includes(africanCountry.toLowerCase()) ||
+  africanCountry.toLowerCase().includes(shippingCountry.toLowerCase())
+);
+
+    // Calculate total, multiplying only if it's an African country
     const total = order.orderItems.reduce((acc, item) => {
-      return acc + (item.product.price.toNumber() * item.quantity * 1000);
+      const itemTotal = item.product.price.toNumber() * item.quantity;
+      return acc + (isAfrica ? itemTotal * 1000 : itemTotal);
     }, 0);
 
-    log.info(`Total order amount in RWF: ${total}`);
 
     const pesapalOrderData = {
       id: order.id,
-      currency: "RWF",
+      currency: isAfrica ? "RWF" : "USD",
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
