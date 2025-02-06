@@ -139,10 +139,10 @@ export async function POST(
 
   try {
     // Validate environment variables
-    if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET) {
-      log.error('Missing Pesapal credentials');
-      return new NextResponse("Missing Pesapal credentials", { status: 500 });
-    }
+    // if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET) {
+    //   log.error('Missing Pesapal credentials');
+    //   return new NextResponse("Missing Pesapal credentials", { status: 500 });
+    // }
 
     const token = await getPesapalToken(
       process.env.PESAPAL_CONSUMER_KEY, 
