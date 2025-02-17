@@ -131,6 +131,35 @@ export async function OPTIONS() {
   });
 }
 
+// Add a type for the request body
+interface CheckoutRequestBody {
+  products: Array<{ productId: string; quantity: number }>;
+  shippingDetails: {
+    addressLine1: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    phoneNumber: string;
+  };
+  location: string; // Add location to the request body
+}
+
+// Add currency mapping
+const CURRENCY_MAP: { [key: string]: { code: string; multiplier: number } } = {
+  "Rwanda": { code: "RWF", multiplier: 1000 },
+  "Kenya": { code: "KES", multiplier: 1 },
+  "Uganda": { code: "UGX", multiplier: 1 },
+  "Tanzania": { code: "TZS", multiplier: 1 },
+  "Burundi": { code: "BIF", multiplier: 1 },
+  "default": { code: "USD", multiplier: 1 }
+};
+
+// Helper function to get currency details
+function getCurrencyDetails(location: string) {
+  return CURRENCY_MAP[location] || CURRENCY_MAP.default;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: { storeId: string } }
@@ -159,10 +188,14 @@ export async function POST(
       ipnId = await registerIpnUrl(token, params.storeId);
     }
 
-    const body = await req.json();
+    const body = await req.json() as CheckoutRequestBody;
     
     log.info(`Received request body: ${JSON.stringify(body)}`);
     
+    // Get currency details based on location
+    const { code: currencyCode, multiplier } = getCurrencyDetails(body.location);
+    log.info(`Using currency: ${currencyCode} with multiplier: ${multiplier}`);
+
     const productIds = body.products.map((product: any) => product.productId);
     const quantities = body.products.map((product: any) => product.quantity);
 
@@ -189,28 +222,32 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
-    // Multiply the price by 1000 to convert to RWF
+    // Calculate total with appropriate multiplier
     const total = order.orderItems.reduce((acc, item) => {
-      return acc + (item.product.price.toNumber() * item.quantity * 1000);
+      return acc + (item.product.price.toNumber() * item.quantity * multiplier);
     }, 0);
 
-    log.info(`Total order amount in RWF: ${total}`);
+    log.info(`Total order amount in ${currencyCode}: ${total}`);
 
     const pesapalOrderData = {
       id: order.id,
-      currency: "RWF",
+      currency: currencyCode,
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
       notification_id: ipnId,
       cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       billing_address: {
-        email_address: "",  // Left empty for client to fill
-        phone_number: body.shippingDetails.phoneNumber || "",   // Left empty for client to fill
-        country_code: "RW", // Changed to Rwanda
-        first_name: "",     // Left empty for client to fill
-        last_name: "",      // Left empty for client to fill
-        line_1: body.shippingDetails.addressLine1 || "", // Keeping address line
+        email_address: "",
+        phone_number: body.shippingDetails.phoneNumber || "",
+        country_code: body.shippingDetails.country.substring(0, 2).toUpperCase(), // Convert country to 2-letter code
+        first_name: "",
+        last_name: "",
+        line_1: body.shippingDetails.addressLine1 || "",
+        city: body.shippingDetails.city || "",
+        state: body.shippingDetails.state || "",
+        postal_code: body.shippingDetails.zipCode || "",
+        country: body.shippingDetails.country || ""
       }
     };
 
