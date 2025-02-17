@@ -215,17 +215,17 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
-    // Define African countries
-    const africanCountries = [
+     // Define African countries
+     const africanCountries = [
       "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
       "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
       "Ethiopia", "Ghana", "Angola", "Mozambique"
     ];
 
-    // Detect if the country is in Africa
-    const shippingCountry = body.shippingDetails?.country || "Rwanda"; // Default to Rwanda
+    // Use the detected location from the client
+    const location = body.location;
     const isAfrica = africanCountries.some(country => 
-      shippingCountry.toLowerCase().includes(country.toLowerCase())
+      location.toLowerCase().includes(country.toLowerCase())
     );
 
     // Calculate total with appropriate currency
@@ -241,21 +241,20 @@ export async function POST(
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
       notification_id: ipnId,
-      cancellation_url:` ${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
+      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       billing_address: {
         email_address: "",
-        phone_number: body.shippingDetails.phoneNumber || "",
-        country_code: shippingCountry.substring(0, 2).toUpperCase(),
+        phone_number: body.shippingDetails.phoneNumber,
+        country_code: "",
         first_name: "",
         last_name: "",
-        line_1: body.shippingDetails.addressLine1 || "",
-        city: body.shippingDetails.city || "",
-        state: body.shippingDetails.state || "",
-        postal_code: body.shippingDetails.zipCode || "",
-        country: shippingCountry
+        line_1: body.shippingDetails.addressLine1,
+        city: body.shippingDetails.city,
+        state: body.shippingDetails.state,
+        postal_code: body.shippingDetails.zipCode,
+        country: body.shippingDetails.country,
       }
     };
-
     console.log('Pesapal Order Data:', JSON.stringify(pesapalOrderData, null, 2));
 
     const pesapalResponse = await submitPesapalOrder(token, pesapalOrderData);
