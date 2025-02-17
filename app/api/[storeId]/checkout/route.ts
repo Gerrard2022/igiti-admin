@@ -7,6 +7,38 @@ const log = {
   error: (message: string, error?: any) => console.error(`[PESAPAL_CHECKOUT_ERROR] ${message}`, error)
 };
 
+// Add interfaces at the top of the file
+interface PesapalAuthResponse {
+  token: string;
+  error?: string;
+}
+
+interface PesapalIpnResponse {
+  ipn_id: string;
+}
+
+interface PesapalOrderResponse {
+  order_tracking_id?: string;
+  orderTrackingId?: string;
+  tracking_id?: string;
+  redirect_url?: string;
+  redirectUrl?: string;
+  paymentUrl?: string;
+}
+
+interface CheckoutRequestBody {
+  products: Array<{ productId: string; quantity: number }>;
+  shippingDetails: {
+    addressLine1: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    phoneNumber: string;
+  };
+  location?: string;
+}
+
 // Authentication for Pesapal
 async function getPesapalToken(consumerKey: string, consumerSecret: string) {
   log.info('Attempting to get Pesapal authentication token');
@@ -21,14 +53,11 @@ async function getPesapalToken(consumerKey: string, consumerSecret: string) {
       body: JSON.stringify({ consumer_key: consumerKey, consumer_secret: consumerSecret })
     });
 
-    log.info(`Token request response status: ${response.status}`);
-
     if (!response.ok) {
-      log.error(`Failed to get token. Status: ${response.status}`);
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as PesapalAuthResponse;
     
     if (data.error) {
       log.error(`Token request error: ${data.error}`);
@@ -67,7 +96,7 @@ async function registerIpnUrl(token: string, storeId: string) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as PesapalIpnResponse;
     log.info('IPN URL registered successfully');
     
     // Store IPN details in database
@@ -87,7 +116,7 @@ async function registerIpnUrl(token: string, storeId: string) {
 }
 
 // Submit order to Pesapal
-async function submitPesapalOrder(token: string, orderData: any) {
+async function submitPesapalOrder(token: string, orderData: any): Promise<PesapalOrderResponse> {
   log.info('Submitting order to Pesapal');
   
   try {
@@ -101,14 +130,11 @@ async function submitPesapalOrder(token: string, orderData: any) {
       body: JSON.stringify(orderData)
     });
 
-    log.info(`Order submission response status: ${response.status}`);
-
     if (!response.ok) {
-      log.error(`Order submission HTTP error: ${response.status}`);
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
 
-    const orderResponse = await response.json();
+    const orderResponse = await response.json() as PesapalOrderResponse;
     log.info('Order submitted successfully');
     return orderResponse;
   } catch (error) {
@@ -118,11 +144,11 @@ async function submitPesapalOrder(token: string, orderData: any) {
 }
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": process.env.FRONTEND_STORE_URL,
+  "Access-Control-Allow-Origin": process.env.FRONTEND_STORE_URL || "",
   "Access-Control-Allow-Methods": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Credentials": "true",
-};
+  "Access-Control-Allow-Credentials": "true"
+} as const;
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -159,7 +185,7 @@ export async function POST(
       ipnId = await registerIpnUrl(token, params.storeId);
     }
 
-    const body = await req.json();
+    const body = await req.json() as CheckoutRequestBody;
     
     log.info(`Received request body: ${JSON.stringify(body)}`);
     
@@ -189,26 +215,24 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
-// Define African countries (keep the existing list)
-const africanCountries = [
-  "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
-  "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
-  "Ethiopia", "Ghana", "Angola", "Mozambique"
-];
+    // Define African countries
+    const africanCountries = [
+      "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
+      "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
+      "Ethiopia", "Ghana", "Angola", "Mozambique"
+    ];
 
-// Detect if the country is in Africa by checking the shipping country
-const shippingCountry = body.shippingDetails?.country || "unknown";
-const isAfrica = africanCountries.some(africanCountry => 
-  shippingCountry.toLowerCase().includes(africanCountry.toLowerCase()) ||
-  africanCountry.toLowerCase().includes(shippingCountry.toLowerCase())
-);
+    // Detect if the country is in Africa
+    const shippingCountry = body.shippingDetails?.country || "Rwanda"; // Default to Rwanda
+    const isAfrica = africanCountries.some(country => 
+      shippingCountry.toLowerCase().includes(country.toLowerCase())
+    );
 
-    // Calculate total, multiplying only if it's an African country
+    // Calculate total with appropriate currency
     const total = order.orderItems.reduce((acc, item) => {
       const itemTotal = item.product.price.toNumber() * item.quantity;
       return acc + (isAfrica ? itemTotal * 1000 : itemTotal);
     }, 0);
-
 
     const pesapalOrderData = {
       id: order.id,
@@ -217,14 +241,18 @@ const isAfrica = africanCountries.some(africanCountry =>
       description: `Order ${order.id} from store ${params.storeId}`,
       callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
       notification_id: ipnId,
-      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
+      cancellation_url:` ${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
       billing_address: {
-        email_address: "",  // Left empty for client to fill
-        phone_number: body.shippingDetails.phoneNumber || "",   // Left empty for client to fill
-        country_code: "RW", // Changed to Rwanda
-        first_name: "",     // Left empty for client to fill
-        last_name: "",      // Left empty for client to fill
-        line_1: body.shippingDetails.addressLine1 || "", // Keeping address line
+        email_address: "",
+        phone_number: body.shippingDetails.phoneNumber || "",
+        country_code: shippingCountry.substring(0, 2).toUpperCase(),
+        first_name: "",
+        last_name: "",
+        line_1: body.shippingDetails.addressLine1 || "",
+        city: body.shippingDetails.city || "",
+        state: body.shippingDetails.state || "",
+        postal_code: body.shippingDetails.zipCode || "",
+        country: shippingCountry
       }
     };
 
