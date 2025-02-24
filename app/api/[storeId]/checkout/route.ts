@@ -215,18 +215,19 @@ export async function POST(
 
     log.info(`Order created in database with ID: ${order.id}`);
 
-    // Define African countries
-    const africanCountries = [
-      "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
-      "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
-      "Ethiopia", "Ghana", "Angola", "Mozambique"
-    ];
+// Define African countries (keep the existing list)
+const africanCountries = [
+  "Rwanda", "Kenya", "Uganda", "Tanzania", "Burundi", 
+  "Nigeria", "South Africa", "Egypt", "Algeria", "Morocco",
+  "Ethiopia", "Ghana", "Angola", "Mozambique"
+];
 
-    // Detect if the country is in Africa
-    const shippingCountry = body.shippingDetails?.country || "Rwanda"; // Default to Rwanda
-    const isAfrica = africanCountries.some(country => 
-      shippingCountry.toLowerCase().includes(country.toLowerCase())
-    );
+// Detect if the country is in Africa by checking the shipping country
+const shippingCountry = body.shippingDetails?.country || "unknown";
+const isAfrica = africanCountries.some(africanCountry => 
+  shippingCountry.toLowerCase().includes(africanCountry.toLowerCase()) ||
+  africanCountry.toLowerCase().includes(shippingCountry.toLowerCase())
+);
 
     // Calculate total with appropriate currency
     const total = order.orderItems.reduce((acc, item) => {
@@ -239,25 +240,18 @@ export async function POST(
       currency: isAfrica ? "RWF" : "USD",
       amount: total,
       description: `Order ${order.id} from store ${params.storeId}`,
-      callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1`,
+      callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1&orderId=${order.id}`,
       notification_id: ipnId,
-      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1`,
+      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1&orderId=${order.id}`,
       billing_address: {
-        email_address: "",
-        phone_number: body.shippingDetails.phoneNumber || "",
-        country_code: shippingCountry.substring(0, 2).toUpperCase(),
-        first_name: "",
-        last_name: "",
-        line_1: body.shippingDetails.addressLine1 || "",
-        city: body.shippingDetails.city || "",
-        state: body.shippingDetails.state || "",
-        postal_code: body.shippingDetails.zipCode || "",
-        country: shippingCountry
-      },
-      ipn_notification_type: "GET",
-      ipn_url: `${process.env.FRONTEND_STORE_URL}/api/${params.storeId}/pesapal-ipn`,
+        email_address: "",  // Left empty for client to fill
+        phone_number: body.shippingDetails.phoneNumber || "",   // Left empty for client to fill
+        country_code: "RW", // Changed to Rwanda
+        first_name: "",     // Left empty for client to fill
+        last_name: "",      // Left empty for client to fill
+        line_1: body.shippingDetails.addressLine1 || "", // Keeping address line
+      }
     };
-
     console.log('Pesapal Order Data:', JSON.stringify(pesapalOrderData, null, 2));
 
     const pesapalResponse = await submitPesapalOrder(token, pesapalOrderData);

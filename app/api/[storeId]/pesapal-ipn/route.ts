@@ -1,17 +1,39 @@
 import { NextResponse } from 'next/server';
 import prismadb from "@/lib/prismadb";
+import { PesapalTransactionStatusResponse } from "../checkout/types";
 
 const log = {
   info: (message: string) => console.log(`[PESAPAL_IPN] ${message}`),
   error: (message: string, error?: any) => console.error(`[PESAPAL_IPN_ERROR] ${message}`, error)
 };
 
-async function getPesapalToken(consumerKey: string, consumerSecret: string) {
-  // Reuse the token fetching logic from checkout/route.ts
-  // ... (copy the function from checkout/route.ts)
+async function getPesapalToken(consumerKey: string, consumerSecret: string): Promise<string> {
+  try {
+    const response = await fetch('https://pay.pesapal.com/v3/api/Auth/RequestToken', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        consumer_key: consumerKey,
+        consumer_secret: consumerSecret
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.token;
+  } catch (error) {
+    log.error('Failed to get Pesapal token', error);
+    throw error;
+  }
 }
 
-async function getTransactionStatus(orderTrackingId: string, token: string): Promise<any> {
+async function getTransactionStatus(orderTrackingId: string, token: string): Promise<PesapalTransactionStatusResponse> {
   const url = `https://pay.pesapal.com/v3/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`;
   
   const response = await fetch(url, {
@@ -37,19 +59,31 @@ export async function GET(
   try {
     const { searchParams } = new URL(req.url);
     const orderTrackingId = searchParams.get('OrderTrackingId');
-    const orderMerchantReference = searchParams.get('OrderMerchantReference');
 
-    if (!orderTrackingId || !orderMerchantReference) {
-      log.error('Missing required parameters');
+    if (!orderTrackingId) {
+      log.error('Missing OrderTrackingId parameter');
       return new NextResponse(JSON.stringify({
         orderNotificationType: "IPNCHANGE",
         orderTrackingId,
-        orderMerchantReference,
         status: 500
       }));
     }
 
-    log.info(`Processing IPN for order ${orderMerchantReference}`);
+    log.info(`Processing IPN for tracking ID: ${orderTrackingId}`);
+
+    // Find the order using the tracking ID
+    const order = await prismadb.order.findFirst({
+      where: { pesapalTrackingId: orderTrackingId }
+    });
+
+    if (!order) {
+      log.error(`No order found for tracking ID: ${orderTrackingId}`);
+      return new NextResponse(JSON.stringify({
+        orderNotificationType: "IPNCHANGE",
+        orderTrackingId,
+        status: 500
+      }));
+    }
 
     const token = await getPesapalToken(
       process.env.PESAPAL_CONSUMER_KEY!,
@@ -63,18 +97,21 @@ export async function GET(
     // Update order status based on Pesapal response
     if (transactionStatus.payment_status_description === "COMPLETED") {
       await prismadb.order.update({
-        where: { id: orderMerchantReference },
-        data: { isPaid: true }
+        where: { id: order.id },
+        data: { 
+          isPaid: true,
+          // Update any other relevant fields
+        }
       });
       
-      log.info(`Order ${orderMerchantReference} marked as paid`);
+      log.info(`Order ${order.id} marked as paid`);
     }
 
     // Return the required IPN response format
     return new NextResponse(JSON.stringify({
       orderNotificationType: "IPNCHANGE",
       orderTrackingId,
-      orderMerchantReference,
+      orderMerchantReference: order.id,
       status: 200
     }));
 
@@ -83,7 +120,6 @@ export async function GET(
     return new NextResponse(JSON.stringify({
       orderNotificationType: "IPNCHANGE",
       orderTrackingId: searchParams.get('OrderTrackingId'),
-      orderMerchantReference: searchParams.get('OrderMerchantReference'),
       status: 500
     }));
   }
