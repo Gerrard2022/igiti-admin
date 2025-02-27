@@ -45,7 +45,7 @@ interface TransactionStatus {
   amount: number;
   created_date: string;
   confirmation_code: string;
-  payment_status_description: string;
+  payment_status_description: 'INVALID' | 'FAILED' | 'COMPLETED' | 'REVERSED';
   description: string;
   message: string;
   payment_account: string;
@@ -184,7 +184,7 @@ async function getTransactionStatus(token: string, orderTrackingId: string): Pro
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}` 
+      'Authorization': `Bearer ${token}`
     }
   });
   return response.json();
@@ -469,47 +469,15 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const orderId = searchParams.get('orderId');
     const status = searchParams.get('status');
-    const orderTrackingId = searchParams.get('OrderTrackingId');
 
-    console.log('Payment Callback Received:', {
+    console.log('🔔 Payment Callback Received:', {
       orderId,
       status,
-      orderTrackingId,
       timestamp: new Date().toISOString()
     });
 
-    // Handle IPN notifications from Pesapal
-    if (orderTrackingId) {
-      const order = await prismadb.order.findFirst({
-        where: { pesapalTrackingId: orderTrackingId }
-      });
-
-      if (!order) {
-        return new NextResponse(JSON.stringify({
-          orderNotificationType: "IPNCHANGE",
-          orderTrackingId,
-          status: 500
-        }), { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      await handlePaymentStatus(order.id, orderTrackingId, order.storeId);
-
-      return new NextResponse(JSON.stringify({
-        orderNotificationType: "IPNCHANGE",
-        orderTrackingId,
-        orderMerchantReference: order.id,
-        status: 200
-      }), { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Handle status check requests from frontend
-    if (orderId) {
+    // Handle success/cancel redirects
+    if (orderId && status) {
       const order = await prismadb.order.findFirst({
         where: { 
           id: orderId,
@@ -518,22 +486,40 @@ export async function GET(
       });
 
       if (!order?.pesapalTrackingId) {
+        console.log('❌ No order found or no tracking ID:', orderId);
         return new NextResponse(JSON.stringify({ 
           error: 'Order not found or no tracking ID',
           status: 'error' 
         }), { status: 404 });
       }
 
+      if (status === 'canceled') {
+        console.log('Payment cancelled for order:', orderId);
+        await prismadb.order.update({
+          where: { id: orderId },
+          data: { 
+            status: 'CANCELLED',
+            isPaid: false,
+            paymentDescription: 'Payment cancelled by user'
+          }
+        });
+
+        return new NextResponse(JSON.stringify({ 
+          status: 'CANCELLED',
+          isPaid: false 
+        }));
+      }
+
+      // For success, check payment status with Pesapal
+      console.log('Checking payment status for order:', orderId);
       const result = await handlePaymentStatus(
         orderId, 
         order.pesapalTrackingId, 
         params.storeId
       );
 
-      return new NextResponse(JSON.stringify(result), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      console.log('Payment status result:', result);
+      return new NextResponse(JSON.stringify(result));
     }
 
     return new NextResponse(JSON.stringify({ error: 'Invalid request' }), { 
