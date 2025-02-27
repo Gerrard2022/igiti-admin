@@ -250,6 +250,8 @@ export async function POST(
       data: {
         storeId: params.storeId,
         isPaid: false,
+        phone: body.shippingDetails.phoneNumber || "",
+        address: `${body.shippingDetails.addressLine1}, ${body.shippingDetails.city}, ${body.shippingDetails.state}, ${body.shippingDetails.zipCode}, ${body.shippingDetails.country}`.trim(),
         orderItems: {
           create: productIds.map((productId: string, index: number) => ({
             product: { connect: { id: productId } },
@@ -257,7 +259,13 @@ export async function POST(
           }))
         }
       },
-      include: { orderItems: { include: { product: true } } }
+      include: { 
+        orderItems: { 
+          include: { 
+            product: true 
+          } 
+        } 
+      }
     });
 
     log.info(`Order created in database with ID: ${order.id}`);
