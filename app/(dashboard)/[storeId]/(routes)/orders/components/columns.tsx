@@ -6,7 +6,7 @@ import { ArrowUpDown, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-export type OrderColumn = {
+export interface OrderColumn {
   id: string;
   phone: string;
   address: string; // This will display as "Shipping Address"
@@ -14,9 +14,14 @@ export type OrderColumn = {
   quantity: string; // Quantity as a string from your data
   totalPrice: string;
   isPaid: boolean;
-  isSent: boolean;
+  status: string; // Add status field
+  paymentMethod?: string; // Add new payment fields
+  paymentConfirmationCode?: string;
+  paymentDescription?: string;
+  paymentAccount?: string;
+  paymentDate?: Date;
   createdAt: string;
-};
+}
 
 export const columns: ColumnDef<OrderColumn>[] = [
   {
@@ -53,28 +58,8 @@ export const columns: ColumnDef<OrderColumn>[] = [
     },
   },
   {
-    accessorKey: "isSent",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Status
-          <ArrowUpDown className="w-4 h-4 ml-2" />
-        </Button>
-      );
-    },
-    cell: ({ row }) => {
-      const isPaid = row.getValue("isPaid");
-      const isSent = row.getValue("isSent");
-      if (!isPaid) return <Badge variant="destructive">Processing</Badge>;
-      return isSent ? (
-        <Badge variant="success">Sent</Badge>
-      ) : (
-        <Badge variant="warning">Pending</Badge>
-      );
-    },
+    accessorKey: "status",
+    header: "Status",
   },
   {
     accessorKey: "createdAt",

@@ -3,8 +3,8 @@ import prismadb from "@/lib/prismadb";
 
 // Logging utility
 const log = {
-  info: (message: string) => console.log(`[PESAPAL_CHECKOUT] ${message}`),
-  error: (message: string, error?: any) => console.error(`[PESAPAL_CHECKOUT_ERROR] ${message}`, error)
+  info: (message: string) => console.log(`[PESAPAL] ${message}`),
+  error: (message: string, error?: any) => console.error(`[PESAPAL_ERROR] ${message}`, error)
 };
 
 // Add interfaces at the top of the file
@@ -38,6 +38,41 @@ interface CheckoutRequestBody {
   };
   location?: string;
 }
+
+// Update the TransactionStatus interface to match Pesapal's response
+interface TransactionStatus {
+  payment_method: string;
+  amount: number;
+  created_date: string;
+  confirmation_code: string;
+  payment_status_description: string;
+  description: string;
+  message: string;
+  payment_account: string;
+  call_back_url: string;
+  status_code: PesapalStatusCode;
+  merchant_reference: string;
+  payment_status_code: string;
+  currency: string;
+  error: {
+    error_type: string | null;
+    code: string | null;
+    message: string | null;
+    call_back_url: string | null;
+  };
+  status: string;
+}
+
+// Add this enum for better type safety
+enum PesapalStatusCode {
+  INVALID = 0,
+  COMPLETED = 1,
+  FAILED = 2,
+  REVERSED = 3
+}
+
+// Update OrderStatus type to match all possible states
+type OrderStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED' | 'PROCESSING';
 
 // Authentication for Pesapal
 async function getPesapalToken(consumerKey: string, consumerSecret: string) {
@@ -76,7 +111,7 @@ async function getPesapalToken(consumerKey: string, consumerSecret: string) {
 async function registerIpnUrl(token: string, storeId: string) {
   log.info('Registering IPN URL with Pesapal');
   
-  const ipnUrl = `${process.env.FRONTEND_STORE_URL}/api/${storeId}/pesapal-ipn`;
+  const ipnUrl = `${process.env.FRONTEND_STORE_URL}/api/${storeId}/checkout`;
   
   try {
     const response = await fetch('https://pay.pesapal.com/v3/api/URLSetup/RegisterIPN', {
@@ -135,12 +170,24 @@ async function submitPesapalOrder(token: string, orderData: any): Promise<Pesapa
     }
 
     const orderResponse = await response.json() as PesapalOrderResponse;
-    log.info('Order submitted successfully');
     return orderResponse;
   } catch (error) {
     log.error('Order submission error', error);
     throw new Error('Failed to submit order to Pesapal');
   }
+}
+
+// Update the getTransactionStatus function
+async function getTransactionStatus(token: string, orderTrackingId: string): Promise<TransactionStatus> {
+  const url = `https://pay.pesapal.com/v3/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`;
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` 
+    }
+  });
+  return response.json();
 }
 
 const corsHeaders = {
@@ -235,23 +282,24 @@ const isAfrica = africanCountries.some(africanCountry =>
       return acc + (isAfrica ? itemTotal * 1000 : itemTotal);
     }, 0);
 
-    const pesapalOrderData = {
-      id: order.id,
-      currency: isAfrica ? "RWF" : "USD",
-      amount: total,
-      description: `Order ${order.id} from store ${params.storeId}`,
-      callback_url: `${process.env.FRONTEND_STORE_URL}/cart?success=1&orderId=${order.id}`,
-      notification_id: ipnId,
-      cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?canceled=1&orderId=${order.id}`,
-      billing_address: {
-        email_address: "",  // Left empty for client to fill
-        phone_number: body.shippingDetails.phoneNumber || "",   // Left empty for client to fill
-        country_code: "RW", // Changed to Rwanda
-        first_name: "",     // Left empty for client to fill
-        last_name: "",      // Left empty for client to fill
-        line_1: body.shippingDetails.addressLine1 || "", // Keeping address line
-      }
-    };
+// Update the pesapalOrderData object to use the registered IPN ID
+const pesapalOrderData = {
+  id: order.id,
+  currency: isAfrica ? "RWF" : "USD",
+  amount: total,
+  description: `Order ${order.id} from store ${params.storeId}`,
+  callback_url: `${process.env.FRONTEND_STORE_URL}/cart?orderId=${order.id}&status=success`,
+  cancellation_url: `${process.env.FRONTEND_STORE_URL}/cart?orderId=${order.id}&status=canceled`,
+  notification_id: ipnId,
+  ipn_url: `/api/${params.storeId}/checkout`,
+  billing_address: {
+    email_address: "",
+    phone_number: body.shippingDetails.phoneNumber || "",
+    first_name: "",
+    last_name: "",
+    line_1: body.shippingDetails.addressLine1 || ""
+  }
+};
     console.log('Pesapal Order Data:', JSON.stringify(pesapalOrderData, null, 2));
 
     const pesapalResponse = await submitPesapalOrder(token, pesapalOrderData);
@@ -271,7 +319,9 @@ const isAfrica = africanCountries.some(africanCountry =>
 
     await prismadb.order.update({
       where: { id: order.id },
-      data: { pesapalTrackingId: orderTrackingId }
+      data: { 
+        pesapalTrackingId: orderTrackingId
+      }
     });
 
     log.info(`Order submitted successfully. Tracking ID: ${orderTrackingId}`);
@@ -300,5 +350,201 @@ const isAfrica = africanCountries.some(africanCountry =>
       status: 500,
       headers: corsHeaders 
     });
+  }
+}
+
+
+// Update the handlePaymentStatus function to use more response data
+async function handlePaymentStatus(
+  orderId: string, 
+  trackingId: string, 
+  storeId: string
+): Promise<{ status: OrderStatus; isPaid: boolean; details: any }> {
+  console.log("CONFIRMATIN CODE IS ABOUT TO RUN!!!!!!!");
+  try {
+    const order = await prismadb.order.findFirst({
+      where: { 
+        id: orderId,
+        storeId: storeId
+      }
+    });
+
+    if (!order) {
+      throw new Error(`Order not found: ${orderId}`);
+    }
+
+    const token = await getPesapalToken(
+      process.env.PESAPAL_CONSUMER_KEY!,
+      process.env.PESAPAL_CONSUMER_SECRET!
+    );
+
+    const transactionStatus = await getTransactionStatus(token, trackingId);
+    
+    console.log('Payment Status Check:', {
+      orderId,
+      status: transactionStatus.payment_status_description,
+      statusCode: transactionStatus.status_code,
+      paymentMethod: transactionStatus.payment_method,
+      amount: transactionStatus.amount,
+      currency: transactionStatus.currency,
+      confirmationCode: transactionStatus.confirmation_code,
+      paymentAccount: transactionStatus.payment_account,
+      description: transactionStatus.description,
+      createdDate: transactionStatus.created_date
+    });
+
+    let newStatus: OrderStatus;
+    let isPaid = false;
+
+    // Map Pesapal status to our status
+    switch (transactionStatus.status_code) {
+      case PesapalStatusCode.COMPLETED:
+        newStatus = 'COMPLETED';
+        isPaid = true;
+        break;
+      case PesapalStatusCode.FAILED:
+        newStatus = 'FAILED';
+        isPaid = false;
+        break;
+      case PesapalStatusCode.REVERSED:
+        newStatus = 'REVERSED';
+        isPaid = false;
+        break;
+      case PesapalStatusCode.INVALID:
+        newStatus = 'FAILED';
+        isPaid = false;
+        break;
+      default:
+        newStatus = 'PROCESSING';
+        isPaid = false;
+    }
+
+    // Store more payment details in the order
+    await prismadb.order.update({
+      where: { id: orderId },
+      data: { 
+        isPaid: isPaid,
+        paymentMethod: transactionStatus.payment_method,
+        paymentConfirmationCode: transactionStatus.confirmation_code,
+        paymentDescription: transactionStatus.description,
+        paymentAccount: transactionStatus.payment_account,
+        paymentDate: new Date(transactionStatus.created_date)
+      }
+    });
+
+    console.log('Order status updated:', {
+      orderId,
+      status: newStatus,
+      isPaid,
+      paymentMethod: transactionStatus.payment_method,
+      confirmationCode: transactionStatus.confirmation_code
+    });
+
+    // Return detailed payment information
+    return { 
+      status: newStatus, 
+      isPaid,
+      details: {
+        paymentMethod: transactionStatus.payment_method,
+        amount: transactionStatus.amount,
+        currency: transactionStatus.currency,
+        confirmationCode: transactionStatus.confirmation_code,
+        description: transactionStatus.description,
+        paymentAccount: transactionStatus.payment_account,
+        paymentDate: transactionStatus.created_date
+      }
+    };
+  } catch (error) {
+    console.error('Payment status check failed:', error);
+    throw error;
+  }
+}
+
+// Update the GET endpoint to handle status checks
+export async function GET(
+  req: Request,
+  { params }: { params: { storeId: string } }
+) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const orderId = searchParams.get('orderId');
+    const status = searchParams.get('status');
+    const orderTrackingId = searchParams.get('OrderTrackingId');
+
+    console.log('Payment Callback Received:', {
+      orderId,
+      status,
+      orderTrackingId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Handle IPN notifications from Pesapal
+    if (orderTrackingId) {
+      const order = await prismadb.order.findFirst({
+        where: { pesapalTrackingId: orderTrackingId }
+      });
+
+      if (!order) {
+        return new NextResponse(JSON.stringify({
+          orderNotificationType: "IPNCHANGE",
+          orderTrackingId,
+          status: 500
+        }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      await handlePaymentStatus(order.id, orderTrackingId, order.storeId);
+
+      return new NextResponse(JSON.stringify({
+        orderNotificationType: "IPNCHANGE",
+        orderTrackingId,
+        orderMerchantReference: order.id,
+        status: 200
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Handle status check requests from frontend
+    if (orderId) {
+      const order = await prismadb.order.findFirst({
+        where: { 
+          id: orderId,
+          storeId: params.storeId
+        }
+      });
+
+      if (!order?.pesapalTrackingId) {
+        return new NextResponse(JSON.stringify({ 
+          error: 'Order not found or no tracking ID',
+          status: 'error' 
+        }), { status: 404 });
+      }
+
+      const result = await handlePaymentStatus(
+        orderId, 
+        order.pesapalTrackingId, 
+        params.storeId
+      );
+
+      return new NextResponse(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    return new NextResponse(JSON.stringify({ error: 'Invalid request' }), { 
+      status: 400 
+    });
+
+  } catch (error) {
+    console.error('Payment processing failed:', error);
+    return new NextResponse(JSON.stringify({
+      error: 'Payment processing failed',
+      status: 'error'
+    }), { status: 500 });
   }
 }

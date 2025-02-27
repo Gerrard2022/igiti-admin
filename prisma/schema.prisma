@@ -9,16 +9,16 @@ datasource db {
 }
 
 model Store {
-  id         String      @id @default(uuid())
-  name       String
-  userId     String
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  pesapalIpnId    String?     // Add this field for PesaPal IPN
-  pesapalIpnUrl   String?     // Add this field for PesaPal IPN URL
-  billboards     Billboard[] @relation("StoreToBillboard")
-  categories     Category[]  @relation("StoreToCategory")
-  orders         Order[]     @relation("StoreToOrder")
+  id            String      @id @default(uuid())
+  name          String
+  userId        String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  pesapalIpnId  String? // Add this field for PesaPal IPN
+  pesapalIpnUrl String? // Add this field for PesaPal IPN URL
+  billboards    Billboard[] @relation("StoreToBillboard")
+  categories    Category[]  @relation("StoreToCategory")
+  orders        Order[]     @relation("StoreToOrder")
 }
 
 model Billboard {
@@ -76,21 +76,27 @@ model Image {
   updatedAt DateTime @updatedAt
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@index([productId])  
+  @@index([productId])
 }
 
 model Order {
-  id                String           @id @default(uuid())
-  storeId           String
-  isPaid            Boolean          @default(false)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  isSent            Boolean          @default(false)
-  pesapalTrackingId String?         // Add this field for PesaPal tracking
-  store             Store            @relation("StoreToOrder", fields: [storeId], references: [id])
-  orderItems        OrderItem[]
-  shippingDetails   ShippingDetails? @relation("OrderToShippingDetails", fields: [shippingDetailsId], references: [id])
-  shippingDetailsId String?          @unique
+  id                      String           @id @default(uuid())
+  storeId                 String
+  store                   Store            @relation("StoreToOrder", fields: [storeId], references: [id])
+  orderItems              OrderItem[]
+  isPaid                  Boolean          @default(false)
+  status                  String           @default("PENDING")
+  phone                   String           @default("")
+  address                 String           @default("")
+  pesapalTrackingId       String?
+  paymentMethod           String?
+  paymentConfirmationCode String?
+  paymentDescription      String?
+  paymentAccount          String?
+  paymentDate             DateTime?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  shippingDetails         ShippingDetails? @relation("OrderToShippingDetails")
 
   @@index([storeId])
 }
@@ -120,5 +126,8 @@ model ShippingDetails {
   phoneNumber  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  order        Order?   @relation("OrderToShippingDetails")
+  orderId      String?  @unique
+  order        Order?   @relation("OrderToShippingDetails", fields: [orderId], references: [id])
+
+  @@index([orderId])
 }

@@ -21,7 +21,7 @@ const OrdersPage = async ({
           product: true,
         },
       },
-      shippingDetails: true, // Include shipping details
+      shippingDetails: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -30,27 +30,32 @@ const OrdersPage = async ({
 
   const formattedOrders: OrderColumn[] = orders.map((item) => ({
     id: item.id,
-    phone: item.shippingDetails?.phoneNumber || "N/A", // Add phone from shipping details
+    phone: item.shippingDetails?.phoneNumber || "N/A",
     address: `${item.shippingDetails?.addressLine1 || ""} ${
       item.shippingDetails?.addressLine2 || ""
     }, ${item.shippingDetails?.city || ""}, ${
       item.shippingDetails?.state || ""
     }, ${item.shippingDetails?.zipCode || ""}, ${
       item.shippingDetails?.country || ""
-    }`.trim(), // Format full address
+    }`.trim(),
     products: item.orderItems
       .map((orderItem) => orderItem.product.name)
-      .join(", "), // Convert array to comma-separated string
+      .join(", "),
     quantity: item.orderItems
       .map((orderItem) => `${orderItem.quantity}`)
-      .join(", "), // Convert array to comma-separated string
+      .join(", "),
     totalPrice: formatter.format(
-      item.orderItems.reduce((total, item) => {
-        return total + item.quantity * Number(item.product.price);
+      item.orderItems.reduce((total, orderItem) => {
+        return total + (orderItem.quantity * Number(orderItem.product.price));
       }, 0)
     ),
     isPaid: item.isPaid,
-    isSent: item.isSent,
+    status: item.status || "PENDING",
+    paymentMethod: item.paymentMethod || "",
+    paymentConfirmationCode: item.paymentConfirmationCode || "",
+    paymentDescription: item.paymentDescription || "",
+    paymentAccount: item.paymentAccount || "",
+    paymentDate: item.paymentDate,
     createdAt: format(item.createdAt, "MMMM do, yyyy"),
   }));
 

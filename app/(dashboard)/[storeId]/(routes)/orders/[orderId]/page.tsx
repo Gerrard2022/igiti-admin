@@ -28,8 +28,8 @@ const OrderPage = async ({
 
   const formattedOrder: OrderColumn = {
     id: order.id,
-    phone: order.phone,
-    address: order.address,
+    phone: order.phone || "",
+    address: order.address || "",
     products: JSON.stringify(
       order.orderItems.map(
         (orderItem) => orderItem.product.name
@@ -42,14 +42,18 @@ const OrderPage = async ({
     ),
     totalPrice: formatter.format(
       order.orderItems.reduce((total, item) => {
-        return total + Number(item.product.price);
+        return total + (Number(item.product.price) * item.quantity);
       }, 0)
     ),
     isPaid: order.isPaid,
-    isSent: order.isSent,
+    status: order.status || "PENDING",
+    paymentMethod: order.paymentMethod || "",
+    paymentConfirmationCode: order.paymentConfirmationCode || "",
+    paymentDescription: order.paymentDescription || "",
+    paymentAccount: order.paymentAccount || "",
+    paymentDate: order.paymentDate,
     createdAt: format(order.createdAt, "MMMM do, yyyy"),
   };
-
 
   return (
     <div className="flex-col md:ml-56">

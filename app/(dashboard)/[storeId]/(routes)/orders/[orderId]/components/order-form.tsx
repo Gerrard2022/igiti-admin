@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { Send, Trash } from "lucide-react";
+import { format } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
@@ -12,16 +13,27 @@ import { Separator } from "@/components/ui/separator";
 import { AlertModal } from "@/components/modals/alert-modal";
 import { OrderColumn } from "../../components/columns";
 
-export const OrderForm: React.FC<{
-  initialData: OrderColumn & {
-    products: { product: { name: string }; quantity: number }[];
-  };
-}> = ({ initialData }) => {
+interface OrderFormProps {
+  initialData: OrderColumn;
+}
+
+export const OrderForm: React.FC<OrderFormProps> = ({
+  initialData
+}) => {
   const params = useParams();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const statusColor = {
+    PENDING: "bg-yellow-200 text-yellow-700",
+    PROCESSING: "bg-blue-200 text-blue-700",
+    COMPLETED: "bg-green-200 text-green-700",
+    CANCELLED: "bg-red-200 text-red-700",
+    FAILED: "bg-red-200 text-red-700",
+    REVERSED: "bg-purple-200 text-purple-700"
+  };
 
   const onDelete = async () => {
     try {
@@ -84,41 +96,55 @@ export const OrderForm: React.FC<{
         </Button>
       </div>
       <Separator />
-      <h3 className="pt-4 text-xl font-bold">
-        Order ID: {initialData.id}
-      </h3>
-      <div className="p-2 mb-4 overflow-hidden shadow sm:rounded-lg">
-        <div className="mb-2">
-          <strong className="text-gray-700">Phone:</strong>{" "}
-          {initialData.phone}
-        </div>
-        <div className="mb-2">
-          <strong className="text-gray-700">Address:</strong>{" "}
-          {initialData.address}
-        </div>
-        <div className="mb-2">
-          <strong className="text-gray-700">Is Paid:</strong>{" "}
-          {initialData.isPaid ? "Yes" : "No"}
-        </div>
-        <div>
-          <strong className="text-gray-700">Products:</strong>
-          <div className="flex flex-col justify-center">
-            {initialData.products.map((item, i) => (
-              <div key={i} className="mb-1">
-                {item.product.name} x {item.quantity}
-              </div>
-            ))}
+      <div className="space-y-4">
+        <div className="p-4 border rounded-md">
+          <h2 className="text-lg font-medium">Order Details</h2>
+          <div className="mt-4 space-y-2">
+            <div>Order ID: {initialData.id}</div>
+            <div>Created At: {initialData.createdAt}</div>
+            <div>Phone: {initialData.phone}</div>
+            <div>Address: {initialData.address}</div>
+            <div>Products: {initialData.products}</div>
+            <div>Quantity: {initialData.quantity}</div>
+            <div>Total Price: {initialData.totalPrice}</div>
+            <div>Payment Status: 
+              <span className={`ml-2 px-2 py-1 rounded-full text-sm ${
+                initialData.isPaid ? 'bg-green-200 text-green-700' : 'bg-red-200 text-red-700'
+              }`}>
+                {initialData.isPaid ? 'Paid' : 'Unpaid'}
+              </span>
+            </div>
+            <div>Order Status: 
+              <span className={`ml-2 px-2 py-1 rounded-full text-sm ${
+                statusColor[initialData.status as keyof typeof statusColor] || 'bg-gray-200 text-gray-700'
+              }`}>
+                {initialData.status}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex justify-between mb-2">
-          <div>
-            <strong className="text-gray-700">Is Sent:</strong>{" "}
-            {initialData.isSent ? "Yes" : "No"}
+
+        {/* Payment Details Section */}
+        {initialData.paymentMethod && (
+          <div className="p-4 border rounded-md">
+            <h2 className="text-lg font-medium">Payment Details</h2>
+            <div className="mt-4 space-y-2">
+              <div>Payment Method: {initialData.paymentMethod}</div>
+              {initialData.paymentConfirmationCode && (
+                <div>Confirmation Code: {initialData.paymentConfirmationCode}</div>
+              )}
+              {initialData.paymentAccount && (
+                <div>Payment Account: {initialData.paymentAccount}</div>
+              )}
+              {initialData.paymentDescription && (
+                <div>Description: {initialData.paymentDescription}</div>
+              )}
+              {initialData.paymentDate && (
+                <div>Payment Date: {format(new Date(initialData.paymentDate), "MMMM do, yyyy HH:mm")}</div>
+              )}
+            </div>
           </div>
-          <Button onClick={onSent} className="py-1">
-            Mark as sent <Send className="pl-1" />
-          </Button>
-        </div>
+        )}
       </div>
     </div>
   );
