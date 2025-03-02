@@ -250,21 +250,25 @@ export async function POST(
       data: {
         storeId: params.storeId,
         isPaid: false,
-        phone: body.shippingDetails.phoneNumber || "",
+        phone: body.shippingDetails.phoneNumber,
         address: `${body.shippingDetails.addressLine1}, ${body.shippingDetails.city}, ${body.shippingDetails.state}, ${body.shippingDetails.zipCode}, ${body.shippingDetails.country}`.trim(),
+        location: body.location || "Unknown",
+        status: "PENDING",
         orderItems: {
           create: productIds.map((productId: string, index: number) => ({
-            product: { connect: { id: productId } },
+            product: {
+              connect: { id: productId }
+            },
             quantity: quantities[index]
           }))
         }
       },
-      include: { 
-        orderItems: { 
-          include: { 
-            product: true 
-          } 
-        } 
+      include: {
+        orderItems: {
+          include: {
+            product: true
+          }
+        }
       }
     });
 
@@ -285,8 +289,8 @@ const isAfrica = africanCountries.some(africanCountry =>
 );
 
     // Calculate total with appropriate currency
-    const total = order.orderItems.reduce((acc, item) => {
-      const itemTotal = item.product.price.toNumber() * item.quantity;
+    const total = order.orderItems.reduce((acc: number, item) => {
+      const itemTotal = Number(item.product.price) * item.quantity;
       return acc + (isAfrica ? itemTotal * 1000 : itemTotal);
     }, 0);
 

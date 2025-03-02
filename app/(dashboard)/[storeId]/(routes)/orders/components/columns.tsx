@@ -9,42 +9,37 @@ import { Badge } from "@/components/ui/badge";
 export interface OrderColumn {
   id: string;
   phone: string;
-  address: string; // This will display as "Shipping Address"
-  products: string; // Product name
-  quantity: string; // Quantity as a string from your data
+  address: string;
+  products: string;
+  quantity: string;
   totalPrice: string;
   isPaid: boolean;
-  status: string; // Add status field
-  paymentMethod?: string; // Add new payment fields
+  status: string;
+  paymentMethod?: string;
   paymentConfirmationCode?: string;
   paymentDescription?: string;
   paymentAccount?: string;
   paymentDate?: Date;
+  location?: string;
   createdAt: string;
 }
 
 export const columns: ColumnDef<OrderColumn>[] = [
   {
-    accessorKey: "products", // Access the product name
-    header: "Product Name",
-    cell: ({ row }) => {
-      return <div>{row.getValue("products")}</div>;
-    },
+    accessorKey: "products",
+    header: "Products",
   },
   {
-    accessorKey: "quantity", // Access the quantity
+    accessorKey: "quantity",
     header: "Quantity",
-    cell: ({ row }) => {
-      return <div>{row.getValue("quantity")}</div>;
-    },
   },
   {
     accessorKey: "phone",
     header: "Phone",
   },
   {
-    accessorKey: "address", // Field remains as "address"
-    header: "Shipping Address", // Display name updated
+    accessorKey: "address",
+    header: "Address",
   },
   {
     accessorKey: "totalPrice",
@@ -58,12 +53,44 @@ export const columns: ColumnDef<OrderColumn>[] = [
     },
   },
   {
+    accessorKey: "location",
+    header: "Location",
+  },
+  {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Status
+          <ArrowUpDown className="w-4 h-4 ml-2" />
+        </Button>
+      );
+    },
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      return (
+        <Badge
+          className={
+            status === "COMPLETED"
+              ? "bg-green-200 text-green-700"
+              : status === "PENDING"
+              ? "bg-yellow-200 text-yellow-700"
+              : status === "CANCELLED"
+              ? "bg-red-200 text-red-700"
+              : "bg-blue-200 text-blue-700"
+          }
+        >
+          {status}
+        </Badge>
+      );
+    },
   },
   {
     accessorKey: "createdAt",
-    header: "Order Date",
+    header: "Date",
   },
   {
     id: "actions",

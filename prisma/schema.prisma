@@ -88,6 +88,7 @@ model Order {
   status                  String           @default("PENDING")
   phone                   String           @default("")
   address                 String           @default("")
+  location                String?
   pesapalTrackingId       String?
   paymentMethod           String?
   paymentConfirmationCode String?

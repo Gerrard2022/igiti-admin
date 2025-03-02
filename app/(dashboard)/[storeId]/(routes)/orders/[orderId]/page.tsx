@@ -30,23 +30,20 @@ const OrderPage = async ({
     id: order.id,
     phone: order.phone || "",
     address: order.address || "",
-    products: JSON.stringify(
-      order.orderItems.map(
-        (orderItem) => orderItem.product.name
-      )
-    ),
-    quantity: JSON.stringify(
-      order.orderItems.map(
-        (orderItem) => `${orderItem.quantity}`
-      )
-    ),
+    location: order.location || "",
+    products: order.orderItems
+      .map((orderItem) => orderItem.product.name)
+      .join(", "),
+    quantity: order.orderItems
+      .map((orderItem) => orderItem.quantity.toString())
+      .join(", "),
     totalPrice: formatter.format(
       order.orderItems.reduce((total, item) => {
         return total + (Number(item.product.price) * item.quantity);
       }, 0)
     ),
     isPaid: order.isPaid,
-    status: order.status || "PENDING",
+    status: order.status,
     paymentMethod: order.paymentMethod || "",
     paymentConfirmationCode: order.paymentConfirmationCode || "",
     paymentDescription: order.paymentDescription || "",

@@ -104,6 +104,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             <div>Created At: {initialData.createdAt}</div>
             <div>Phone: {initialData.phone}</div>
             <div>Address: {initialData.address}</div>
+            <div>Location: {initialData.location}</div>
             <div>Products: {initialData.products}</div>
             <div>Quantity: {initialData.quantity}</div>
             <div>Total Price: {initialData.totalPrice}</div>
