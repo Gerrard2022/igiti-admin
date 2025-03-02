@@ -59,12 +59,11 @@ export const CellAction: React.FC<CellActionProps> = ({
       await axios.patch(
         `/api/${params.storeId}/orders/${data.id}`,
         {
-          ...data,
-          isSent: true,
+          status: "COMPLETED"
         }
       );
       router.refresh();
-      toast.success("Order is sent");
+      toast.success("Order marked as completed");
     } catch (error) {
       console.log(error);
       toast.error("Something went wrong");

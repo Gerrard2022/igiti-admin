@@ -6,12 +6,30 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { Send, Trash } from "lucide-react";
 import { format } from "date-fns";
+import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
 import { Separator } from "@/components/ui/separator";
 import { AlertModal } from "@/components/modals/alert-modal";
 import { OrderColumn } from "../../components/columns";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+
+const formSchema = z.object({
+  isPaid: z.boolean().default(false),
+  status: z.string().optional(),
+});
+
+type OrderFormValues = z.infer<typeof formSchema>;
 
 interface OrderFormProps {
   initialData: OrderColumn;
@@ -35,6 +53,31 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     REVERSED: "bg-purple-200 text-purple-700"
   };
 
+  const form = useForm<OrderFormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      isPaid: initialData.isPaid,
+    },
+  });
+
+  const onSubmit = async (data: OrderFormValues) => {
+    try {
+      setLoading(true);
+      await axios.patch(`/api/${params.storeId}/orders/${params.orderId}`, {
+        isPaid: data.isPaid,
+        status: data.status || initialData.status
+      });
+      
+      router.refresh();
+      router.push(`/${params.storeId}/orders`);
+      toast.success("Order updated.");
+    } catch (error) {
+      toast.error("Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onDelete = async () => {
     try {
       setLoading(true);
@@ -49,27 +92,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     } finally {
       setLoading(false);
       setOpen(false);
-    }
-  };
-
-  const onSent = async () => {
-    if (!initialData.isSent) {
-      try {
-        setLoading(true);
-        await axios.patch(
-          `/api/${params.storeId}/orders/${initialData.id}`,
-          { isSent: true }
-        );
-        router.refresh();
-        toast.success("Order is sent.");
-      } catch (error) {
-        console.error(error);
-        toast.error("Something went wrong.");
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      toast.error("Order is already sent.");
     }
   };
 
@@ -147,6 +169,46 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
         )}
       </div>
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="w-full space-y-8"
+        >
+          <div className="grid grid-cols-3 gap-8">
+            <FormField
+              control={form.control}
+              name="isPaid"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={field.value}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Paid</FormLabel>
+                  </div>
+                </FormItem>
+              )}
+            />
+            <Button 
+              type="button"
+              onClick={() => {
+                form.setValue("status", "COMPLETED");
+                form.handleSubmit(onSubmit)();
+              }}
+              disabled={loading}
+            >
+              Mark as Completed
+            </Button>
+          </div>
+          <Button disabled={loading} type="submit">
+            Update Order
+          </Button>
+        </form>
+      </Form>
     </div>
   );
 };
