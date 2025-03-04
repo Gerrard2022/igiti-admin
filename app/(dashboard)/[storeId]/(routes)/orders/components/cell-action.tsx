@@ -38,15 +38,15 @@ export const CellAction: React.FC<CellActionProps> = ({
   const onDelete = async () => {
     try {
       setLoading(true);
+      // First delete all order items
       await axios.delete(
         `/api/${params.storeId}/orders/${data.id}`
       );
       router.refresh();
-      toast.success("Order deleted.");
-    } catch (error) {
-      toast.error(
-        "Make sure you removed all categories using this billboard first."
-      );
+      toast.success("Order deleted successfully.");
+    } catch (error: any) {
+      console.error('Delete Error:', error.response?.data || error.message);
+      toast.error("Error deleting order. Please try again.");
     } finally {
       setLoading(false);
       setOpen(false);
@@ -103,7 +103,6 @@ export const CellAction: React.FC<CellActionProps> = ({
             <Send className="w-4 h-4 mr-2" />
             Mark as sent
           </DropdownMenuItem>
-
           <DropdownMenuItem onClick={() => setOpen(true)}>
             <Trash className="w-4 h-4 mr-2" />
             Delete

@@ -104,10 +104,18 @@ export async function DELETE(
       return new NextResponse("Unauthorized", { status: 405 });
     }
 
+    // First delete all related order items
+    await prismadb.orderItem.deleteMany({
+      where: {
+        orderId: params.orderId
+      }
+    });
+
+    // Then delete the order
     const order = await prismadb.order.delete({
       where: {
-        id: params.orderId,
-      },
+        id: params.orderId
+      }
     });
 
     return NextResponse.json(order);
